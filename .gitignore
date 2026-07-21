@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Node / Vite
+node_modules/
+frontend/node_modules/
+frontend/dist/
+dist/
+build/
+
+# Secrets
+.env
+*.env
+!*.env.example
+backend/.env
+frontend/.env
+
+# Logs and local outputs
+logs/
+*.log
+*.out.log
+*.err.log
+*.pid
+
+# Private thesis and evaluation artifacts
+*.xlsx
+*.docx
+*.ipynb
+docs/ragas_results*.csv
+docs/ragas_raw_responses*.jsonl
+
+# Source documents and generated vector data are rebuilt locally.
+backend/data/raw_pdfs/*.pdf
+backend/data/processed/*.json
+backend/data/vector_db/*
+!backend/data/raw_pdfs/.gitkeep
+!backend/data/processed/.gitkeep
+!backend/data/vector_db/.gitkeep
+
+# Large model artifacts
+backend/model_artifacts/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

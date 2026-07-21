@@ -1,0 +1,113 @@
+from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
+import os
+
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = BACKEND_ROOT.parent
+
+
+def _load_env_file(path: Path) -> None:
+    if not path.exists():
+        return
+
+    for raw_line in path.read_text(encoding="utf-8-sig").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        os.environ.setdefault(key, value)
+
+
+def _get_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+
+
+def _get_float(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+
+
+def _get_list(name: str, default: list[str]) -> list[str]:
+    value = os.getenv(name)
+    if not value:
+        return default
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+@dataclass(frozen=True)
+class Settings:
+    project_root: Path
+    backend_root: Path
+    frontend_origin: str
+    cors_origins: list[str]
+    raw_pdfs_dir: Path
+    processed_dir: Path
+    vector_db_dir: Path
+    vector_db_type: str
+    processed_chunks_path: Path
+    embeddings_path: Path
+    embeddings_meta_path: Path
+    embedding_model: str
+    llm_provider: str
+    gemini_api_key: str
+    gemini_model: str
+    ollama_base_url: str
+    ollama_model: str
+    top_k: int
+    similarity_threshold: float
+    chunk_size: int
+    chunk_overlap: int
+    rag_engine: str
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    _load_env_file(BACKEND_ROOT / ".env")
+
+    frontend_origin = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
+    cors_origins = _get_list(
+        "CORS_ORIGINS",
+        [
+            frontend_origin,
+            "http://127.0.0.1:5173",
+            "http://localhost:5173",
+        ],
+    )
+
+    raw_pdfs_dir = BACKEND_ROOT / "data" / "raw_pdfs"
+    processed_dir = BACKEND_ROOT / "data" / "processed"
+    vector_db_dir = BACKEND_ROOT / "data" / "vector_db"
+
+    return Settings(
+        project_root=PROJECT_ROOT,
+        backend_root=BACKEND_ROOT,
+        frontend_origin=frontend_origin,
+        cors_origins=cors_origins,
+        raw_pdfs_dir=raw_pdfs_dir,
+        processed_dir=processed_dir,
+        vector_db_dir=vector_db_dir,
+        vector_db_type=os.getenv("VECTOR_DB_TYPE", "local_json").strip().lower(),
+        processed_chunks_path=processed_dir / "chunks.json",
+        embeddings_path=vector_db_dir / "embeddings.npy",
+        embeddings_meta_path=vector_db_dir / "embeddings_meta.json",
+        embedding_model=os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-small"),
+        llm_provider=os.getenv("LLM_PROVIDER", "gemini").strip().lower(),
+        gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
+        gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+        ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
+        ollama_model=os.getenv("OLLAMA_MODEL", "llama3.1:8b"),
+        top_k=_get_int("TOP_K", 4),
+        similarity_threshold=_get_float("SIMILARITY_THRESHOLD", 0.30),
+        chunk_size=_get_int("CHUNK_SIZE", 900),
+        chunk_overlap=_get_int("CHUNK_OVERLAP", 120),
+        rag_engine=os.getenv("RAG_ENGINE", "langchain").strip().lower(),
+    )

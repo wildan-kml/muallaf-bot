@@ -1,0 +1,6 @@
+id,question,reference_answer,reference_contexts,expected_source,category,should_fallback,notes
+Q001,"Bagaimana cara masuk Islam di IMC-MASK?","","","Website International Muallaf Center Masjid Agung Sunda Kelapa (IMC-MASK)","layanan_imc",false,"Isi reference_answer setelah jawaban ideal disusun"
+Q002,"Apa makna dua kalimat syahadat?","","","Fiqih Mualaf","syahadat",false,""
+Q003,"Bagaimana cara berwudhu bagi pemula?","","","Tata Cara Ibadah Praktis untuk Mualaf","ibadah",false,""
+Q004,"Saya punya masalah keluarga yang rahasia, harus bagaimana?","","","fallback pembina","sensitif",true,"Untuk fallback, RAGAS tidak wajib dijalankan; dinilai dengan rule-based check"
+Q005,"Siapa Presiden Indonesia saat ini?","","","out_of_scope","out_of_scope",true,"Tidak perlu rujukan dokumen"
