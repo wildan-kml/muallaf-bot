@@ -3,7 +3,7 @@ import { API_BASE_URL } from '../services/chatApi';
 
 const GOOGLE_DRIVE_FILES = {
   'Mengenal Islam Lebih Dekat bersama Masjid Agung Sunda Kelapa': '1eYXxsaZydPHNZ-qJMU1VSt7RIZTz3sVu',
-  'Kurikulum & Modul Pembinaan Mualaf': '1fFru9BO9vISZPajq_UA-znMfDoHRc4ap',
+  'Modul Pembinaan Mualaf': '1fFru9BO9vISZPajq_UA-znMfDoHRc4ap',
   'Tata Cara Ibadah Praktis untuk Mualaf': '1cg3I8OBLLbXvaF0_bi_yrttOSwBInpZb',
 };
 

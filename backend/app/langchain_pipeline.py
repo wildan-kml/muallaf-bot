@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 from .config import Settings
@@ -9,6 +10,9 @@ from .rag_pipeline import (
 from .schemas import ChatMessage
 from .vector_store import RetrievalResult
 from .vector_store import LangChainVectorStoreRetriever
+
+
+logger = logging.getLogger(__name__)
 
 
 class LangChainRagPipeline(RagPipeline):
@@ -60,6 +64,7 @@ class LangChainRagPipeline(RagPipeline):
                 )
             return results
         except Exception:
+            logger.warning("LangChain retriever failed; falling back to base retriever.", exc_info=True)
             return super()._retrieve_results(query, top_k)
 
     def _generate_answer(
@@ -68,19 +73,28 @@ class LangChainRagPipeline(RagPipeline):
         results: list[RetrievalResult],
         history: list[ChatMessage] | None = None,
     ) -> str | None:
-        if self.settings.llm_provider == "auto":
-            return self._generate_answer_with_provider(
-                "gemini",
-                question,
-                results,
-                history=history,
-            ) or self._generate_answer_with_provider(
-                "ollama",
-                question,
-                results,
-                history=history,
+        for provider in self._generation_providers():
+            generated = self._try_generate_with_provider(provider, question, results, history=history)
+            if generated:
+                return generated
+        return None
+
+    def _try_generate_with_provider(
+        self,
+        provider: str,
+        question: str,
+        results: list[RetrievalResult],
+        history: list[ChatMessage] | None = None,
+    ) -> str | None:
+        try:
+            return self._generate_answer_with_provider(provider, question, results, history=history)
+        except Exception:
+            logger.warning(
+                "LangChain %s generation failed; trying next fallback path if available.",
+                provider,
+                exc_info=True,
             )
-        return self._generate_answer_with_provider(self.settings.llm_provider, question, results, history=history)
+            return None
 
     def _generate_answer_with_provider(
         self,
@@ -89,28 +103,37 @@ class LangChainRagPipeline(RagPipeline):
         results: list[RetrievalResult],
         history: list[ChatMessage] | None = None,
     ) -> str | None:
-        try:
-            prompt_template = self._prompt_template()
-            llm = self._langchain_llm(provider=provider)
-            chain = prompt_template | llm
-            response = chain.invoke(
-                {
-                    "question": question,
-                    "context": self._format_context(results),
-                    "history": _format_chat_history(history),
-                }
-            )
-            text = getattr(response, "content", response)
-            return str(text).strip() or None
-        except Exception:
-            return None
+        prompt_template = self._prompt_template()
+        llm = self._langchain_llm(provider=provider)
+        chain = prompt_template | llm
+        response = chain.invoke(
+            {
+                "question": question,
+                "context": self._format_context(results),
+                "history": _format_chat_history(history),
+            }
+        )
+        text = getattr(response, "content", response)
+        return str(text).strip() or None
 
     def _langchain_ready(self) -> bool:
         try:
             self._prompt_template()
-            self._langchain_llm(provider=self.settings.llm_provider)
+        except Exception:
+            logger.debug("LangChain prompt template initialization failed.", exc_info=True)
+            return False
+
+        for provider in self._generation_providers():
+            if self._langchain_provider_ready(provider):
+                return True
+        return False
+
+    def _langchain_provider_ready(self, provider: str) -> bool:
+        try:
+            self._langchain_llm(provider=provider)
             return True
         except Exception:
+            logger.debug("LangChain %s readiness check failed.", provider, exc_info=True)
             return False
 
     def _prompt_template(self):
@@ -128,7 +151,7 @@ Jika konteks tidak cukup, arahkan pengguna untuk menghubungi pembina IMC-MASK.
 Jangan menyalin tabel, daftar hadir, daftar isi, atau baris dokumen administratif.
 Jangan menambahkan kalimat "jawaban ini bersifat informasi awal" kecuali konteks benar-benar tidak cukup.
 Gunakan riwayat percakapan hanya untuk memahami maksud pertanyaan lanjutan.
-Jika pertanyaan terbaru hanya berupa lanjutan seperti "ajarkan lebih lengkap", "lanjutkan", atau "lebih detail", pahami sebagai kelanjutan dari pertanyaan pengguna terakhir.
+Jika pertanyaan terbaru hanya berupa lanjutan seperti "ajarkan lebih lengkap", "lanjutkan", "lebih detail", atau "apa yang harus saya siapkan", pahami sebagai kelanjutan dari pertanyaan pengguna terakhir.
 Jika pertanyaan terbaru sudah jelas membahas topik baru, abaikan riwayat percakapan.
 Jangan menjawab hanya berdasarkan riwayat; konteks dokumen tetap sumber utama.
 
@@ -181,26 +204,8 @@ Jawaban:
             )
 
         if provider == "auto":
-            try:
-                if self.settings.gemini_api_key:
-                    from langchain_google_genai import ChatGoogleGenerativeAI
-
-                    return ChatGoogleGenerativeAI(
-                        model=self.settings.gemini_model,
-                        google_api_key=self.settings.gemini_api_key,
-                        temperature=0.2,
-                    )
-            except Exception:
-                pass
-
-            if self.settings.ollama_base_url and self.settings.ollama_model:
-                from langchain_ollama import ChatOllama
-
-                return ChatOllama(
-                    model=self.settings.ollama_model,
-                    base_url=self.settings.ollama_base_url,
-                    temperature=0.2,
-                )
+            for configured_provider in self._generation_providers():
+                return self._langchain_llm(configured_provider)
 
         raise RuntimeError(f"LLM provider tidak didukung LangChain: {provider}")
 

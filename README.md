@@ -2,6 +2,8 @@
 
 Repositori ini adalah versi publik untuk kebutuhan dokumentasi skripsi. Isi repo difokuskan pada alur penelitian:
 
+© 2026 Copyright by Muhammad Wildan Kamil, Afrida Helen, Mira Suryani.
+
 - halaman Beranda IMC-MASK;
 - halaman penuh Muallaf Bot;
 - backend FastAPI;
@@ -19,9 +21,9 @@ backend/
   app/                         # FastAPI, RAG pipeline, preprocessing, vector store
   scripts/                     # build knowledge base, evaluasi RAGAS, contoh CLI
   data/
-    raw_pdfs/                  # tempat PDF rujukan lokal, tidak ikut Git
-    processed/                 # chunks.json hasil build, tidak ikut Git
-    vector_db/                 # embeddings/vector store, tidak ikut Git
+    raw_pdfs/                  # PDF rujukan publik yang sudah diizinkan
+    processed/                 # chunks.json hasil build, belum ikut Git
+    vector_db/                 # embeddings/vector store, belum ikut Git
 frontend/
   src/                         # Beranda dan halaman Muallaf Bot
 docs/
@@ -34,7 +36,6 @@ File berikut tidak disertakan ke GitHub:
 
 - `.env`;
 - API key Gemini;
-- PDF rujukan;
 - `chunks.json`;
 - embeddings/vector DB;
 - log;
@@ -62,7 +63,7 @@ Jalankan FastAPI:
 
 ## Build Knowledge Base
 
-Letakkan PDF rujukan di:
+PDF rujukan sudah tersedia di:
 
 ```text
 backend/data/raw_pdfs/
@@ -82,6 +83,7 @@ Output lokal yang terbentuk:
 - metadata embeddings.
 
 File output ini tidak diunggah ke GitHub karena berisi hasil ekstraksi dokumen rujukan.
+Untuk saat ini proses uji coba tetap difokuskan di repo utama `imc-mask`; `processed` dan `vector_db` akan dimasukkan ke versi publik setelah hasilnya stabil.
 
 ## Menjalankan Frontend
 
@@ -119,14 +121,17 @@ Contoh fallback di luar konteks:
 
 ## Publikasi
 
-Folder ini dapat dijadikan repo GitHub terpisah:
+Repo ini sudah terhubung ke remote GitHub. Untuk publish perubahan public saat ini:
 
 ```powershell
 cd chatbot-public
-git init
-git add .
-git commit -m "Initial public research version of IMC-MASK Muallaf Bot"
-git branch -M main
-git remote add origin https://github.com/USERNAME/imc-mask-muallaf-bot-rag.git
-git push -u origin main
+git status --short
+git add -A
+git restore --staged -- backend/data/processed backend/data/vector_db
+git add backend/data/processed/.gitkeep backend/data/vector_db/.gitkeep
+git commit -m "Update public Muallaf Bot research version"
+git push origin HEAD:master
 ```
+
+Perintah `git restore --staged` menjaga agar `processed` dan `vector_db` belum
+ikut dipublish. Raw PDF publik tetap masuk commit.

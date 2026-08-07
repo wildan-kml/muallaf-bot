@@ -1,5 +1,6 @@
 from functools import lru_cache
 import json
+import logging
 import re
 from typing import Any
 from urllib import request as urllib_request
@@ -7,6 +8,8 @@ from urllib import request as urllib_request
 from .config import Settings, get_settings
 from .schemas import ChatMessage, ChatResponse, ChatSource
 from .vector_store import RetrievalResult, make_vector_store
+
+logger = logging.getLogger(__name__)
 
 WEBSITE_REFERENCE_LABELS = {
     "imc_mask_website_syahadat_flow_c1": "Alur ikrar syahadat IMC-MASK",
@@ -40,6 +43,8 @@ PRIVACY_OR_SENSITIVE_HINTS = {
     "bunuh diri", "cerai", "hak asuh", "dokumen hukum", "nikah siri",
     "ancaman", "dipaksa", "dilecehkan", "pelecehan",
     "hamil di luar nikah", "menggugurkan", "aborsi", "menggugurkan anak",
+    "murtad", "cara murtad", "keluar dari islam", "keluar islam",
+    "meninggalkan islam", "melepas islam",
 }
 
 EXPLICIT_FALLBACK_PATTERNS = {
@@ -257,6 +262,46 @@ IN_SCOPE_TERMS = {
     "mask", "muallaf bot", "kajian",
 }
 
+STRONG_IN_SCOPE_TERMS = {
+    "mualaf", "muallaf", "syahadat", "ikrar", "masuk islam",
+    "memeluk islam", "pengislaman", "aqidah", "akidah", "rukun iman",
+    "rukun islam", "tauhid", "iman kepada", "ibadah", "shalat", "sholat",
+    "wudhu", "wudu", "tayamum", "thaharah", "taharah", "hadats", "hadas",
+    "najis", "puasa", "zakat", "doa", "dzikir", "zikir", "akhlak", "adab",
+    "quran", "al-qur", "hadis", "hadits", "muamalah", "muamalat",
+    "jual beli dalam islam", "jual beli menurut islam", "transaksi dalam islam",
+    "akad", "riba", "hibah", "hadiah", "wasiat", "waris", "wali nikah",
+    "nikah", "pembinaan", "pembina", "pendamping", "imc", "imc-mask", "kajian",
+}
+
+ISLAMIC_LEGAL_CONTEXT_TERMS = {
+    "dalam islam", "menurut islam", "hukum islam", "fiqih", "fikih",
+    "syariat", "syariah", "muamalah", "muamalat", "akad", "riba", "halal", "haram",
+}
+
+STATE_LAW_OR_PUBLIC_CASE_TERMS = {
+    "di indonesia", "undang-undang", "uu ", "kuhp", "kuhper", "hukum pidana",
+    "hukum perdata", "pengadilan", "putusan", "vonis", "divonis", "dihukum",
+    "dipenjara", "tersangka", "terdakwa", "kasus hukum", "nadiem", "makarim",
+}
+
+STATE_LAW_INTENT_TERMS = {
+    "hukum", "berapa tahun", "berapa lama", "dihukum", "dipenjara", "divonis",
+    "vonis", "status kasus", "kasus", "siapa", "apa", "berapa",
+}
+
+
+def _has_strong_in_scope_signal(cleaned: str) -> bool:
+    return _contains_any(cleaned, STRONG_IN_SCOPE_TERMS)
+
+
+def _has_islamic_legal_context(cleaned: str) -> bool:
+    return _contains_any(cleaned, ISLAMIC_LEGAL_CONTEXT_TERMS)
+
+
+def _asks_state_law_or_public_case(cleaned: str) -> bool:
+    return _contains_any(cleaned, STATE_LAW_OR_PUBLIC_CASE_TERMS) and _contains_any(cleaned, STATE_LAW_INTENT_TERMS)
+
 
 def escalation_reply() -> str:
     return (
@@ -294,6 +339,10 @@ def _needs_human_guidance(question: str) -> bool:
 
 def _is_out_of_scope_question(question: str) -> bool:
     cleaned = question.lower()
+
+    if _asks_state_law_or_public_case(cleaned) and not _has_islamic_legal_context(cleaned):
+        return True
+
     if any(
         hint in cleaned
         for hints in OUT_OF_SCOPE_PATTERNS.values()
@@ -303,6 +352,8 @@ def _is_out_of_scope_question(question: str) -> bool:
 
     for rule in OUT_OF_SCOPE_CATEGORY_RULES.values():
         if _contains_any(cleaned, rule["core"]) and _contains_any(cleaned, rule["intent"]):
+            if _has_islamic_legal_context(cleaned) and _has_strong_in_scope_signal(cleaned):
+                continue
             return True
 
     # Jika pertanyaan jelas memakai kosakata domain lain dan sama sekali tidak
@@ -314,7 +365,7 @@ def _is_out_of_scope_question(question: str) -> bool:
         | OUT_OF_SCOPE_CATEGORY_RULES["publik_terkini"]["core"]
         | OUT_OF_SCOPE_CATEGORY_RULES["cuaca_dan_ramalan"]["core"]
     )
-    if _contains_any(cleaned, broad_out_of_scope_terms) and not _contains_any(cleaned, IN_SCOPE_TERMS):
+    if _contains_any(cleaned, broad_out_of_scope_terms) and not _has_strong_in_scope_signal(cleaned):
         return True
 
     return False
@@ -430,11 +481,103 @@ def _classify_question(question: str) -> str | None:
     refers_imc_mask = _contains_any(cleaned, LOCAL_CONTEXT_TERMS)
     asks_conversion = _contains_any(cleaned, CONVERSION_TERMS)
     asks_conversion_service = _contains_any(cleaned, CONVERSION_SERVICE_TERMS)
+    asks_preparation = _contains_any(
+        cleaned,
+        {
+            "dokumen",
+            "berkas",
+            "persyaratan",
+            "syarat",
+            "siapkan",
+            "disiapkan",
+            "persiapan",
+            "apa yang harus saya siapkan",
+            "apa yang harus disiapkan",
+            "apa saja yang perlu disiapkan",
+            "apa saja yang harus disiapkan",
+        },
+    )
 
     if (
-        _contains_any(cleaned, {"dokumen", "berkas", "persyaratan", "syarat"})
-        and (asks_conversion or _contains_any(cleaned, {"ikrar"}))
+        _contains_any(
+            cleaned,
+            {
+                "informasi apa saja",
+                "data apa saja",
+                "apa saja yang perlu disiapkan",
+                "apa saja yang harus disiapkan",
+                "sebelum menghubungi",
+            },
+        )
+        and _contains_any(cleaned, {"menghubungi imc", "imc-mask", "imc mask", "layanan mualaf", "layanan muallaf"})
     ):
+        return "imc_service_preparation"
+    if (
+        (asks_conversion or asks_conversion_service)
+        and _contains_any(
+            cleaned,
+            {
+                "didampingi keluarga",
+                "harus didampingi keluarga",
+                "keluarga mendampingi",
+                "keluarga ikut",
+                "bersama keluarga",
+            },
+        )
+        and refers_imc_mask
+    ):
+        return "imc_conversion_family_companion"
+    if (
+        _contains_any(
+            cleaned,
+            {
+                "ragu",
+                "ragu-ragu",
+                "belum yakin",
+                "masih ragu",
+                "konsultasi dulu",
+                "konsultasi awal",
+                "ingin konsultasi",
+                "mau konsultasi",
+                "bertanya dulu",
+                "tanya dulu",
+            },
+        )
+        and (_contains_any(cleaned, CONVERSION_TERMS) or _contains_any(cleaned, {"islam", "mualaf", "muallaf"}))
+    ):
+        return "imc_consult_before_conversion"
+    if (
+        _contains_any(
+            cleaned,
+            {
+                "menyediakan pembina",
+                "pembina untuk bertanya",
+                "bertanya secara langsung",
+                "bertanya langsung",
+                "pembina langsung",
+                "konsultasi langsung",
+                "ustadz",
+            },
+        )
+        and _contains_any(cleaned, {"imc", "imc-mask", "mask", "pembina", "mualaf", "muallaf"})
+    ):
+        return "imc_direct_mentor"
+    if (
+        _contains_any(cleaned, {"tinggal jauh", "luar jakarta", "di luar jakarta", "jarak jauh", "online", "daring", "tidak di jakarta"})
+        and _contains_any(cleaned, {"imc", "imc-mask", "mask", "arahan", "bimbingan", "pendampingan", "mualaf", "muallaf"})
+    ):
+        return "imc_remote_guidance"
+    if (
+        _contains_any(cleaned, {"membawa teman", "bawa teman", "ajak teman", "mengajak teman", "teman tertarik", "teman yang tertarik"})
+        and _contains_any(cleaned, {"islam", "imc", "imc-mask", "mask", "datang", "konsultasi", "mualaf", "muallaf"})
+    ):
+        return "imc_bring_friend"
+    if (
+        _contains_any(cleaned, {"kelas khusus", "kelas belajar shalat", "kelas shalat", "belajar shalat", "belajar sholat"})
+        and _contains_any(cleaned, {"mualaf baru", "muallaf baru", "imc", "imc-mask", "mask", "pembinaan", "kelas"})
+    ):
+        return "imc_shalat_class"
+    if asks_preparation and (asks_conversion or asks_conversion_service or refers_imc_mask or _contains_any(cleaned, {"ikrar"})):
         return "imc_requirements"
     if (
         _contains_any(cleaned, {"setelah ikrar", "setelah syahadat", "lanjutan", "lanjutannya", "pembinaan lanjutan"})
@@ -481,6 +624,14 @@ def _classify_question(question: str) -> str | None:
         return "ihsan_definition"
     if _contains_any(cleaned, {"ghaib", "gaib"}) and _asks_general_explanation(cleaned):
         return "ghaib_definition"
+    if _contains_any(cleaned, {"muamalah", "muamalat"}) and _asks_general_explanation(cleaned):
+        return "muamalah_basic"
+    if (
+        _contains_any(cleaned, {"jual beli", "transaksi", "akad", "utang", "hutang", "pinjam", "pinjaman", "riba"})
+        and _has_islamic_legal_context(cleaned)
+        and _asks_general_explanation(cleaned)
+    ):
+        return "muamalah_basic"
     if (
         _contains_any(cleaned, {"waris", "hibah", "wasiat"})
         and _contains_any(cleaned, {"apa perbedaan", "bedanya", "beda", "apa itu", "pengertian", "maksud"})
@@ -706,6 +857,38 @@ CURATED_ANSWERS = {
         "dan membawa 2 saksi laki-laki muslim dewasa. Setelah itu peserta mengikuti pembinaan minimal 4 pertemuan, "
         "lalu sertifikat diberikan setelah pembinaan selesai."
     ),
+    "imc_conversion_family_companion": (
+        "Untuk ikrar syahadat di IMC-MASK, alur utama yang perlu dipenuhi adalah mengisi formulir dan surat pernyataan, "
+        "melengkapi dokumen persyaratan, menyerahkan berkas paling lambat H-1, hadir 1 jam sebelum prosesi, serta membawa "
+        "2 saksi laki-laki muslim dewasa. Informasi yang tersedia tidak menyebutkan bahwa calon muallaf harus didampingi keluarga. "
+        "Jika keluarga ingin ikut mendampingi, sebaiknya konfirmasi terlebih dahulu kepada sekretariat IMC-MASK agar pelaksanaannya tertib."
+    ),
+    "imc_consult_before_conversion": (
+        "Boleh. Jika masih ragu atau ingin memahami Islam lebih dulu, calon muallaf dapat berkonsultasi dengan IMC-MASK sebelum ikrar syahadat. "
+        "Konsultasi awal membantu calon muallaf bertanya tentang makna syahadat, dasar keimanan, ibadah awal, dan proses pembinaan tanpa harus terburu-buru."
+    ),
+    "imc_direct_mentor": (
+        "Ya. IMC-MASK menyediakan pendampingan dan pembina untuk membantu muallaf atau calon muallaf bertanya secara langsung. "
+        "Pembina dapat membantu menjelaskan proses ikrar syahadat, pembinaan dasar, ibadah awal, dan kebutuhan pendampingan lanjutan."
+    ),
+    "imc_remote_guidance": (
+        "Jika tinggal jauh dari Jakarta, kamu tetap bisa meminta arahan awal kepada IMC-MASK melalui kanal kontak resmi. "
+        "Untuk kebutuhan yang memerlukan kehadiran langsung, seperti penyerahan dokumen atau prosesi ikrar, jadwal dan teknisnya sebaiknya dikonfirmasi kepada sekretariat IMC-MASK."
+    ),
+    "imc_bring_friend": (
+        "Boleh. Teman yang tertarik mengenal Islam dapat diajak berkonsultasi atau datang ke IMC-MASK untuk memperoleh penjelasan awal. "
+        "Jika teman tersebut ingin mengikuti ikrar syahadat, ia dapat diarahkan mengikuti alur layanan IMC-MASK dan menyiapkan persyaratan yang dibutuhkan."
+    ),
+    "imc_shalat_class": (
+        "IMC-MASK memiliki pembinaan muallaf yang mencakup materi ibadah dasar, termasuk fiqih ibadah dan praktik wudhu serta shalat. "
+        "Jadwal kelas pembinaan tercantum setiap Rabu dan Sabtu pukul 10.00-16.00 WIB di Gedung Fatahillah Lt. 4, Masjid Agung Sunda Kelapa. "
+        "Untuk memastikan kelas yang paling sesuai bagi muallaf baru, sebaiknya hubungi sekretariat atau pembina IMC-MASK."
+    ),
+    "imc_service_preparation": (
+        "Sebelum menghubungi IMC-MASK untuk memperoleh layanan muallaf, siapkan nama, nomor kontak, tujuan layanan, dan pertanyaan utama yang ingin dibahas. "
+        "Jika tujuannya ikrar syahadat, siapkan juga dokumen persyaratan seperti formulir pernyataan, materai, identitas, dan pas foto sesuai ketentuan layanan. "
+        "Informasi awal yang jelas akan membantu sekretariat atau pembina mengarahkan layanan dengan lebih cepat."
+    ),
     "new_interest": (
         "Jika baru tertarik mengenal Islam, mulailah dari hal paling dasar: mengenal Allah, memahami makna syahadat, "
         "dan mempelajari rukun iman serta rukun Islam secara bertahap. Setelah itu, pelajari ibadah harian yang paling "
@@ -770,6 +953,12 @@ CURATED_ANSWERS = {
     "ghaib_definition": (
         "Ghaib adalah perkara yang tidak dapat dijangkau langsung oleh pancaindra, tetapi diyakini berdasarkan wahyu yang benar. "
         "Contohnya malaikat, hari akhir, surga, neraka, dan perkara lain yang dijelaskan dalam ajaran Islam. Seorang Muslim meyakininya sebagai bagian dari iman."
+    ),
+    "muamalah_basic": (
+        "Muamalah adalah bagian ajaran Islam yang mengatur hubungan sosial antar manusia, termasuk interaksi, hak dan kewajiban, serta transaksi. "
+        "Dalam kehidupan sehari-hari, muamalah menuntun seorang Muslim untuk bersikap jujur, adil, amanah, saling ridha, dan tidak merugikan orang lain.\n\n"
+        "Contoh muamalah adalah jual beli, akad, utang-piutang, hibah atau hadiah, kerja sama, dan hubungan sosial dengan keluarga maupun masyarakat. "
+        "Bagi mualaf, pembahasan ini dapat dipahami bertahap setelah dasar akidah dan ibadah, terutama agar interaksi sehari-hari tetap sesuai nilai Islam."
     ),
     "waris_hibah_wasiat": (
         "Secara ringkas, waris, hibah, dan wasiat sama-sama berkaitan dengan pemberian harta, tetapi waktunya berbeda. "
@@ -992,6 +1181,13 @@ WEBSITE_FIRST_INTENTS = {
     "imc_requirements",
     "post_syahadat_guidance",
     "imc_contact_info",
+    "imc_conversion_family_companion",
+    "imc_consult_before_conversion",
+    "imc_direct_mentor",
+    "imc_remote_guidance",
+    "imc_bring_friend",
+    "imc_shalat_class",
+    "imc_service_preparation",
 }
 
 
@@ -1323,6 +1519,20 @@ FOLLOW_UP_QUESTION_HINTS = {
     "contoh lainnya",
     "bagaimana caranya",
     "gimana caranya",
+    "apa yang harus saya siapkan",
+    "apa yang harus disiapkan",
+    "apa saja yang perlu disiapkan",
+    "apa saja yang harus disiapkan",
+    "yang perlu disiapkan",
+    "yang harus disiapkan",
+    "perlu disiapkan",
+    "harus disiapkan",
+    "siapkan apa",
+    "persiapan apa",
+    "persiapannya apa",
+    "syaratnya apa",
+    "dokumennya apa",
+    "berkasnya apa",
 }
 
 
@@ -1331,7 +1541,7 @@ def _build_retrieval_query(question: str) -> str:
 
 
 def _is_follow_up_question(question: str) -> bool:
-    cleaned = _normalize_text(question).lower()
+    cleaned = _normalize_text(question).lower().strip(" .?!,;:")
     if not cleaned:
         return False
     return cleaned in FOLLOW_UP_QUESTION_HINTS or any(
@@ -1404,7 +1614,7 @@ Jika konteks tidak cukup, arahkan pengguna untuk menghubungi pembina IMC-MASK.
 Jangan menyalin tabel, daftar hadir, daftar isi, atau baris dokumen administratif.
 Jangan menambahkan kalimat "jawaban ini bersifat informasi awal" kecuali konteks benar-benar tidak cukup.
 Gunakan riwayat percakapan hanya untuk memahami maksud pertanyaan lanjutan.
-Jika pertanyaan terbaru hanya berupa lanjutan seperti "ajarkan lebih lengkap", "lanjutkan", atau "lebih detail", pahami sebagai kelanjutan dari pertanyaan pengguna terakhir.
+Jika pertanyaan terbaru hanya berupa lanjutan seperti "ajarkan lebih lengkap", "lanjutkan", "lebih detail", atau "apa yang harus saya siapkan", pahami sebagai kelanjutan dari pertanyaan pengguna terakhir.
 Jika pertanyaan terbaru sudah jelas membahas topik baru, abaikan riwayat percakapan.
 Jangan menjawab hanya berdasarkan riwayat; konteks dokumen tetap sumber utama.
 
@@ -1648,7 +1858,8 @@ class RagPipeline:
             answer = "Silakan tulis pertanyaan terlebih dahulu."
             return ChatResponse(answer=answer, reply=answer, mode="fallback")
 
-        intent = _classify_question(question)
+        retrieval_query = _build_contextual_retrieval_query(question, history)
+        intent = _classify_question(retrieval_query)
 
         if _is_sensitive(question):
             answer = escalation_reply()
@@ -1702,7 +1913,6 @@ class RagPipeline:
                 escalation="rag_not_ready",
             )
 
-        retrieval_query = _build_contextual_retrieval_query(question, history)
         results = self._retrieve_results(retrieval_query, max(self.settings.top_k, 8))
         relevant = [
             result for result in results
@@ -1829,17 +2039,40 @@ class RagPipeline:
         results: list[RetrievalResult],
         history: list[ChatMessage] | None = None,
     ) -> str | None:
-        if self.settings.llm_provider == "gemini":
-            return self._generate_with_gemini(question, results, history=history)
-        if self.settings.llm_provider == "ollama":
-            return self._generate_with_ollama(question, results, history=history)
-        if self.settings.llm_provider == "auto":
-            return self._generate_with_gemini(question, results, history=history) or self._generate_with_ollama(
-                question,
-                results,
-                history=history,
-            )
+        providers = self._generation_providers()
+        for provider in providers:
+            generated = self._try_generate_with_provider(provider, question, results, history=history)
+            if generated:
+                return generated
         return None
+
+    def _generation_providers(self) -> list[str]:
+        if self.settings.llm_provider == "auto":
+            providers: list[str] = []
+            if self.settings.gemini_api_key:
+                providers.append("gemini")
+            if self.settings.ollama_base_url and self.settings.ollama_model:
+                providers.append("ollama")
+            return providers
+        return [self.settings.llm_provider]
+
+    def _try_generate_with_provider(
+        self,
+        provider: str,
+        question: str,
+        results: list[RetrievalResult],
+        history: list[ChatMessage] | None = None,
+    ) -> str | None:
+        try:
+            if provider == "gemini":
+                return self._generate_with_gemini(question, results, history=history)
+            if provider == "ollama":
+                return self._generate_with_ollama(question, results, history=history)
+            logger.warning("Unsupported LLM provider configured: %s", provider)
+            return None
+        except Exception:
+            logger.warning("%s generation failed; trying next fallback path if available.", provider, exc_info=True)
+            return None
 
     def _generate_with_gemini(
         self,
@@ -1849,16 +2082,13 @@ class RagPipeline:
     ) -> str | None:
         if not self.settings.gemini_api_key:
             return None
-        try:
-            import google.generativeai as genai
+        import google.generativeai as genai
 
-            genai.configure(api_key=self.settings.gemini_api_key)
-            model = genai.GenerativeModel(self.settings.gemini_model)
-            response = model.generate_content(_make_prompt(question, results, history=history))
-            text = getattr(response, "text", "") or ""
-            return text.strip() or None
-        except Exception:
-            return None
+        genai.configure(api_key=self.settings.gemini_api_key)
+        model = genai.GenerativeModel(self.settings.gemini_model)
+        response = model.generate_content(_make_prompt(question, results, history=history))
+        text = getattr(response, "text", "") or ""
+        return text.strip() or None
 
     def _generate_with_ollama(
         self,
@@ -1866,26 +2096,23 @@ class RagPipeline:
         results: list[RetrievalResult],
         history: list[ChatMessage] | None = None,
     ) -> str | None:
-        try:
-            payload = json.dumps(
-                {
-                    "model": self.settings.ollama_model,
-                    "prompt": _make_prompt(question, results, history=history),
-                    "stream": False,
-                }
-            ).encode("utf-8")
-            req = urllib_request.Request(
-                f"{self.settings.ollama_base_url.rstrip('/')}/api/generate",
-                data=payload,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            with urllib_request.urlopen(req, timeout=60) as response:
-                data = json.loads(response.read().decode("utf-8"))
-            text = str(data.get("response", "")).strip()
-            return text or None
-        except Exception:
-            return None
+        payload = json.dumps(
+            {
+                "model": self.settings.ollama_model,
+                "prompt": _make_prompt(question, results, history=history),
+                "stream": False,
+            }
+        ).encode("utf-8")
+        req = urllib_request.Request(
+            f"{self.settings.ollama_base_url.rstrip('/')}/api/generate",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib_request.urlopen(req, timeout=60) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        text = str(data.get("response", "")).strip()
+        return text or None
 
 
 def _format_first_source(sources: list[ChatSource]) -> str | None:

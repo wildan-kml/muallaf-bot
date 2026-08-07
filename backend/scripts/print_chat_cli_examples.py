@@ -34,7 +34,7 @@ EXAMPLES = {
             "retrieval_confidence": 0.7309,
             "sources": [
                 {"document_title": "Mengenal Islam Lebih Dekat bersama Masjid Agung Sunda Kelapa", "page_number": 26},
-                {"document_title": "Kurikulum & Modul Pembinaan Mualaf", "page_number": 23},
+                {"document_title": "Modul Pembinaan Mualaf", "page_number": 23},
                 {"document_title": "Mengenal Islam Lebih Dekat bersama Masjid Agung Sunda Kelapa", "page_number": 21},
                 {"document_title": "Mengenal Islam Lebih Dekat bersama Masjid Agung Sunda Kelapa", "page_number": 66},
             ],

@@ -33,8 +33,7 @@ logs/
 docs/ragas_results*.csv
 docs/ragas_raw_responses*.jsonl
 
-# Source documents and generated vector data are rebuilt locally.
-backend/data/raw_pdfs/*.pdf
+# Source documents are public; generated vector data is rebuilt locally for now.
 backend/data/processed/*.json
 backend/data/vector_db/*
 !backend/data/raw_pdfs/.gitkeep

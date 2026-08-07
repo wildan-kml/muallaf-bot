@@ -6,9 +6,7 @@ import re
 DOCUMENT_TITLE_ALIASES = {
     "BUKU MILD EDISI KEDUA": "Mengenal Islam Lebih Dekat bersama Masjid Agung Sunda Kelapa",
     "MENGENAL ISLAM LEBIH DEKAT BERSAMA MASJID AGUNG SUNDA KELAPA": "Mengenal Islam Lebih Dekat bersama Masjid Agung Sunda Kelapa",
-    "01 KURIKULUM & MODUL PEMBINAAN MUALAF": "Kurikulum & Modul Pembinaan Mualaf",
-    "MODUL PEMBINAAN MUALAF BAZNAS": "Kurikulum & Modul Pembinaan Mualaf",
-    "MODUL PEMBINAAN MUALAF": "Kurikulum & Modul Pembinaan Mualaf",
+    "MODUL PEMBINAAN MUALAF": "Modul Pembinaan Mualaf",
     "HANDBOOK TATACARA IBADAH PRAKTIS MCB": "Tata Cara Ibadah Praktis untuk Mualaf",
     "TATACARA IBADAH PRAKTIS UNTUK MUALAF MCB": "Tata Cara Ibadah Praktis untuk Mualaf",
     "TATA CARA IBADAH PRAKTIS UNTUK MUALAF BAZNAS": "Tata Cara Ibadah Praktis untuk Mualaf",
@@ -18,10 +16,21 @@ DOCUMENT_TITLE_ALIASES = {
 }
 
 
+CANONICAL_DOCUMENT_FILES = {
+    "Mengenal Islam Lebih Dekat bersama Masjid Agung Sunda Kelapa": "Mengenal Islam Lebih Dekat bersama Masjid Agung Sunda Kelapa.pdf",
+    "Modul Pembinaan Mualaf": "Modul Pembinaan Mualaf.pdf",
+    "Tata Cara Ibadah Praktis untuk Mualaf": "Tata Cara Ibadah Praktis untuk Mualaf.pdf",
+    "Fiqih Mualaf": "Fiqih Mualaf.pdf",
+}
+
+
 def _title_key(value: str) -> str:
     base = Path(str(value or "")).stem
     base = base.replace("_", " ")
-    return re.sub(r"\s+", " ", base).strip().upper()
+    key = re.sub(r"\s+", " ", base).strip().upper()
+    if "MODUL PEMBINAAN MUALAF" in key:
+        return "MODUL PEMBINAAN MUALAF"
+    return key
 
 
 def normalize_document_title(file_name: str = "", document_title: str = "") -> str:
@@ -30,6 +39,14 @@ def normalize_document_title(file_name: str = "", document_title: str = "") -> s
         if key in DOCUMENT_TITLE_ALIASES:
             return DOCUMENT_TITLE_ALIASES[key]
     return str(document_title or Path(str(file_name)).stem or "Dokumen Rujukan")
+
+
+def normalize_document_file_name(file_name: str = "", document_title: str = "") -> str:
+    current = str(file_name or "")
+    if current == "imc-mask-website" or not current:
+        return current
+    title = normalize_document_title(file_name=current, document_title=document_title)
+    return CANONICAL_DOCUMENT_FILES.get(title, current)
 
 
 ARABIC_CHAR_RE = re.compile(r"[\u0600-\u06FF]")
@@ -106,10 +123,14 @@ class TextChunk:
 
     @classmethod
     def from_dict(cls, data: dict) -> "TextChunk":
-        file_name = str(data.get("file_name", ""))
+        raw_file_name = str(data.get("file_name", ""))
         document_title = normalize_document_title(
-            file_name=file_name,
+            file_name=raw_file_name,
             document_title=str(data.get("document_title", "")),
+        )
+        file_name = normalize_document_file_name(
+            file_name=raw_file_name,
+            document_title=document_title,
         )
         return cls(
             chunk_id=str(data.get("chunk_id", "")),
@@ -221,9 +242,9 @@ def is_non_content_page(page: PageText) -> bool:
         return True
     if "mengenal islam lebih dekat" in title and page.page_number >= 183:
         return True
-    if "modul pembinaan mualaf baznas" in title and page.page_number < 8:
+    if "modul pembinaan mualaf" in title and page.page_number < 8:
         return True
-    if "modul pembinaan mualaf baznas" in title and page.page_number >= 218:
+    if "modul pembinaan mualaf" in title and page.page_number >= 218:
         return True
 
     return False

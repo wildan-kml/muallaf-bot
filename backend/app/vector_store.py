@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import json
+import logging
 import math
 import os
 import re
@@ -9,6 +10,9 @@ from langchain_core.embeddings import Embeddings
 
 from .config import Settings
 from .preprocessing import TextChunk
+
+
+logger = logging.getLogger(__name__)
 
 
 STOPWORDS = {
@@ -418,7 +422,7 @@ def save_chunks(chunks: list[TextChunk], path) -> None:
 def load_chunks(path) -> list[TextChunk]:
     if not path.exists():
         return []
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw = json.loads(path.read_text(encoding="utf-8-sig"))
     return [TextChunk.from_dict(item) for item in raw]
 
 
@@ -493,6 +497,7 @@ def build_vector_index(chunks: list[TextChunk], settings: Settings) -> dict[str,
         )
         summary["embeddings_built"] = True
     except Exception as exc:
+        logger.warning("Failed to build embeddings; retrieval will use lexical fallback.", exc_info=True)
         summary["embedding_error"] = str(exc)
 
     if settings.vector_db_type == "faiss":
@@ -501,6 +506,7 @@ def build_vector_index(chunks: list[TextChunk], settings: Settings) -> dict[str,
             summary["faiss_built"] = True
             summary["faiss_path"] = str(faiss_path)
         except Exception as exc:
+            logger.warning("Failed to build FAISS index; local JSON vector store remains usable.", exc_info=True)
             summary["faiss_built"] = False
             summary["faiss_error"] = str(exc)
 
@@ -568,6 +574,7 @@ class LocalVectorStore:
                 return
             self._embedding_status = "loaded"
         except Exception as exc:
+            logger.warning("Failed to load embeddings from %s.", self.settings.embeddings_path, exc_info=True)
             self._embeddings = None
             self._embedding_status = f"load_failed: {exc}"
 
@@ -621,7 +628,7 @@ class LocalVectorStore:
                 reranked.sort(key=lambda item: item.score, reverse=True)
                 return reranked[:top_k]
             except Exception:
-                pass
+                logger.warning("Semantic retrieval failed; falling back to lexical retrieval.", exc_info=True)
 
         scored = [
             RetrievalResult(
@@ -665,6 +672,7 @@ class FaissVectorStore(LocalVectorStore):
             )
             self._faiss_status = "loaded"
         except Exception as exc:
+            logger.warning("Failed to load FAISS index from %s.", index_dir, exc_info=True)
             self._faiss = None
             self._faiss_status = f"load_failed: {exc}"
 
@@ -707,6 +715,7 @@ class FaissVectorStore(LocalVectorStore):
             reranked.sort(key=lambda item: item.score, reverse=True)
             return reranked[:top_k]
         except Exception:
+            logger.warning("FAISS retrieval failed; falling back to local retrieval.", exc_info=True)
             return super().retrieve(question, top_k)
 
 

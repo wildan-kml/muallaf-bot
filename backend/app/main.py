@@ -1,4 +1,5 @@
 import os
+import logging
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -14,6 +15,7 @@ from .schemas import (
 
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 for directory in (settings.raw_pdfs_dir, settings.processed_dir, settings.vector_db_dir):
     directory.mkdir(parents=True, exist_ok=True)
@@ -53,7 +55,7 @@ def warmup_rag_pipeline() -> None:
         if getattr(pipeline, "vector_store", None) and pipeline.vector_store.available:
             pipeline.vector_store.retrieve("query: syahadat mualaf", 1)
     except Exception:
-        pass
+        logger.warning("RAG warmup failed; the first chat request may be slower.", exc_info=True)
 
 
 HOME_CONTENT = {
