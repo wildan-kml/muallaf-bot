@@ -8,6 +8,12 @@ class ChatSource(BaseModel):
     content_preview: str = ""
     file_name: str | None = None
     chunk_id: str | None = None
+    source_id: str | None = None
+    source_type: str | None = None
+    category: str | None = None
+    verified_at: str | None = None
+    last_checked: str | None = None
+    verification_status: str | None = None
     similarity_score: float | None = None
 
 
