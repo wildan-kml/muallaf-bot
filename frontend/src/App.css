@@ -33,56 +33,7 @@ button {
   cursor: pointer;
 }
 
-.site-nav {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 16px clamp(18px, 5vw, 72px);
-  background: var(--green-950);
-  color: var(--white);
-  box-shadow: 0 16px 40px rgba(0, 45, 26, 0.18);
-}
-
-.brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  color: inherit;
-  text-decoration: none;
-}
-
-.brand img {
-  width: 54px;
-  height: 54px;
-  object-fit: contain;
-  border-radius: 50%;
-}
-
-.brand strong,
-.brand small {
-  display: block;
-  line-height: 1.15;
-  text-transform: uppercase;
-}
-
-.brand strong {
-  font-size: 15px;
-}
-
-.brand small {
-  font-size: 11px;
-  opacity: 0.88;
-}
-
-.nav-cta,
-.primary-button,
-.secondary-button,
-.floating-bot,
-.back-button {
+.feedback-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -93,68 +44,20 @@ button {
   padding: 0 18px;
   font-weight: 800;
   text-decoration: none;
-  transition: transform 180ms ease, background 180ms ease, color 180ms ease, border-color 180ms ease;
-}
-
-.nav-cta,
-.primary-button,
-.floating-bot {
+  transition: background 180ms ease, color 180ms ease, border-color 180ms ease;
   background: var(--green-700);
   color: var(--white);
 }
 
-.nav-cta:hover,
-.primary-button:hover,
-.floating-bot:hover {
-  transform: translateY(-2px);
+.feedback-link:hover {
   background: var(--white);
   color: var(--green-800);
 }
-
-.secondary-button,
-.back-button {
-  background: var(--white);
-  color: var(--green-800);
-}
-
-.secondary-button:hover,
-.back-button:hover {
-  transform: translateY(-2px);
-  background: var(--green-800);
-  color: var(--white);
-}
-
-.hero {
-  display: grid;
-  grid-template-columns: minmax(0, 0.92fr) minmax(360px, 1.08fr);
-  gap: clamp(28px, 5vw, 72px);
-  align-items: center;
-  padding: clamp(36px, 7vw, 92px) clamp(18px, 5vw, 72px);
-  background: var(--white);
-}
-
-.hero-copy {
-  max-width: 680px;
-}
-
-.eyebrow {
-  color: var(--green-800);
-  font-size: 14px;
-  font-weight: 900;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-h1,
 h2 {
   margin: 12px 0 16px;
   color: var(--green-950);
   letter-spacing: 0;
   line-height: 1.06;
-}
-
-h1 {
-  font-size: clamp(38px, 5vw, 68px);
 }
 
 h2 {
@@ -165,40 +68,6 @@ p {
   line-height: 1.7;
 }
 
-.hero-copy p {
-  max-width: 580px;
-  color: #30453a;
-  font-size: 18px;
-}
-
-.hero-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  margin: 28px 0;
-}
-
-.hero-media {
-  margin: 0;
-}
-
-.hero-media img {
-  display: block;
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  border-radius: 52px 0 52px 0;
-  object-fit: cover;
-  box-shadow: 0 24px 70px rgba(0, 45, 26, 0.18);
-}
-
-.trust-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.trust-grid div,
-.step-card,
 .question-sidebar,
 .chat-shell,
 .chat-bubble,
@@ -208,84 +77,12 @@ p {
   box-shadow: 0 16px 38px rgba(0, 45, 26, 0.06);
 }
 
-.trust-grid div {
-  min-height: 118px;
-  padding: 18px;
-  border-radius: 8px;
-}
-
-.trust-grid svg {
-  color: var(--green-800);
-}
-
-.trust-grid strong,
-.trust-grid span {
-  display: block;
-}
-
-.trust-grid strong {
-  margin: 10px 0 4px;
-}
-
-.trust-grid span {
-  color: var(--muted);
-  font-size: 14px;
-}
-
-.content-section {
-  padding: clamp(36px, 6vw, 80px) clamp(18px, 5vw, 72px);
-}
-
-.steps {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.step-card {
-  border-radius: 8px;
-  padding: 18px;
-}
-
-.step-card span {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: var(--green-900);
-  color: var(--white);
-  font-weight: 900;
-}
-
-.step-card p {
-  margin: 14px 0 0;
-  color: #31473c;
-  font-size: 14px;
-}
-
-.floating-bot {
-  position: fixed;
-  right: 24px;
-  bottom: 24px;
-  z-index: 20;
-  box-shadow: 0 16px 32px rgba(0, 91, 52, 0.28);
-}
-
 .bot-page {
   display: grid;
   grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
   gap: 20px;
   min-height: 100vh;
   padding: clamp(16px, 3vw, 32px);
-}
-
-.back-button {
-  position: fixed;
-  right: clamp(18px, 4vw, 42px);
-  top: 20px;
-  z-index: 10;
-  box-shadow: 0 14px 32px rgba(0, 45, 26, 0.1);
 }
 
 .question-sidebar {
@@ -318,6 +115,11 @@ p {
   transform: translateX(3px);
   background: var(--green-800);
   color: var(--white);
+}
+
+.feedback-link {
+  width: 100%;
+  margin-top: 20px;
 }
 
 .chat-shell {
@@ -502,18 +304,8 @@ p {
 }
 
 @media (max-width: 980px) {
-  .hero,
   .bot-page {
     grid-template-columns: 1fr;
-  }
-
-  .hero-media {
-    order: -1;
-  }
-
-  .steps,
-  .trust-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .question-sidebar {
@@ -522,51 +314,16 @@ p {
 }
 
 @media (max-width: 640px) {
-  .site-nav {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .nav-cta,
-  .primary-button,
-  .secondary-button,
-  .floating-bot {
-    width: 100%;
-  }
-
-  .floating-bot {
-    left: 16px;
-    right: 16px;
-    bottom: 16px;
-  }
-
-  .hero,
-  .content-section {
-    padding-inline: 16px;
-  }
-
-  .hero-actions,
-  .trust-grid,
-  .steps {
-    grid-template-columns: 1fr;
-  }
-
   .bot-page {
     padding: 12px;
   }
 
-  .back-button {
-    position: static;
-    width: 100%;
+  .question-sidebar {
     grid-row: 1;
   }
 
-  .question-sidebar {
-    grid-row: 2;
-  }
-
   .chat-shell {
-    grid-row: 3;
+    grid-row: 2;
     min-height: 72vh;
     padding: 14px;
   }

@@ -1,11 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Bot, BookOpen, CheckCircle, MessageCircle, Send, ShieldCheck, Sparkles } from 'lucide-react';
-import heroMosque from './assets/masjid-agung-sunda-kelapa.jpg';
-import imcMaskLogo from './assets/imc-mask-logo.jpg';
+import { Bot, MessageSquareText, Send } from 'lucide-react';
 import SourceList from './components/SourceList.jsx';
 import { sendChatQuestion } from './services/chatApi.js';
 
 const CHAT_HISTORY_KEY = 'imc-mask-public-chat-history';
+const FEEDBACK_URL = import.meta.env.VITE_FEEDBACK_URL?.trim();
 
 const suggestedQuestions = [
   'Saya ingin masuk Islam, langkah awalnya apa?',
@@ -19,95 +18,6 @@ function nowTime() {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date());
-}
-
-function HomePage({ goToBot }) {
-  return (
-    <main className="home-page">
-      <nav className="site-nav">
-        <a className="brand" href="#home" aria-label="IMC-MASK">
-          <img src={imcMaskLogo} alt="Logo IMC-MASK" />
-          <span>
-            <strong>International Muallaf Center</strong>
-            <small>Masjid Agung Sunda Kelapa</small>
-          </span>
-        </a>
-        <button className="nav-cta" type="button" onClick={goToBot}>
-          <MessageCircle size={18} />
-          Tanya Muallaf Bot
-        </button>
-      </nav>
-
-      <section className="hero" id="home">
-        <div className="hero-copy">
-          <span className="eyebrow">IMC-MASK</span>
-          <h1>Bersama Menuju Islam dengan Ilmu dan Pembinaan</h1>
-          <p>
-            Website penelitian Muallaf Bot berbasis RAG untuk membantu pertanyaan awal seputar syahadat,
-            ibadah dasar, pembinaan, dan layanan IMC-MASK.
-          </p>
-          <div className="hero-actions">
-            <button className="primary-button" type="button" onClick={goToBot}>
-              <MessageCircle size={20} />
-              Tanya Muallaf Bot
-            </button>
-            <a className="secondary-button" href="#alur">
-              <BookOpen size={20} />
-              Lihat Alur Syahadat
-            </a>
-          </div>
-          <div className="trust-grid" aria-label="Keunggulan layanan">
-            <div>
-              <ShieldCheck />
-              <strong>Terpercaya</strong>
-              <span>Dibina oleh Masjid Agung Sunda Kelapa</span>
-            </div>
-            <div>
-              <CheckCircle />
-              <strong>Terstruktur</strong>
-              <span>Materi pembinaan mualaf bertahap</span>
-            </div>
-            <div>
-              <Sparkles />
-              <strong>RAG + LLM</strong>
-              <span>Jawaban disertai rujukan dokumen</span>
-            </div>
-          </div>
-        </div>
-        <figure className="hero-media">
-          <img src={heroMosque} alt="Masjid Agung Sunda Kelapa" />
-        </figure>
-      </section>
-
-      <section className="content-section" id="alur">
-        <div className="section-heading">
-          <span className="eyebrow">Layanan IMC-MASK</span>
-          <h2>Alur Ikrar Syahadat</h2>
-        </div>
-        <div className="steps">
-          {[
-            'Isi formulir dan surat pernyataan',
-            'Lengkapi dokumen persyaratan',
-            'Serahkan berkas paling lambat H-1',
-            'Hadir 1 jam sebelum prosesi',
-            'Membawa 2 saksi laki-laki muslim dewasa',
-            'Mengikuti pembinaan minimal 4 pertemuan',
-            'Sertifikat diberikan setelah pembinaan selesai',
-          ].map((step, index) => (
-            <article className="step-card" key={step}>
-              <span>{index + 1}</span>
-              <p>{step}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <button className="floating-bot" type="button" onClick={goToBot}>
-        <MessageCircle size={22} />
-        Tanya Muallaf Bot
-      </button>
-    </main>
-  );
 }
 
 function BotMessage({ message }) {
@@ -134,7 +44,7 @@ function BotMessage({ message }) {
   );
 }
 
-function BotPage({ goHome }) {
+function BotPage() {
   const [messages, setMessages] = useState(() => {
     try {
       const parsed = JSON.parse(localStorage.getItem(CHAT_HISTORY_KEY) || '[]');
@@ -212,10 +122,6 @@ function BotPage({ goHome }) {
 
   return (
     <main className="bot-page">
-      <button className="back-button" type="button" onClick={goHome}>
-        <ArrowLeft size={18} />
-        Kembali ke Beranda
-      </button>
       <aside className="question-sidebar">
         <h2>Pertanyaan umum mualaf</h2>
         {suggestedQuestions.map((item) => (
@@ -223,6 +129,12 @@ function BotPage({ goHome }) {
             {item}
           </button>
         ))}
+        {FEEDBACK_URL && (
+          <a className="feedback-link" href={FEEDBACK_URL} target="_blank" rel="noreferrer">
+            <MessageSquareText size={18} />
+            Berikan Feedback
+          </a>
+        )}
       </aside>
       <section className="chat-shell">
         <div className="date-divider">
@@ -275,22 +187,5 @@ function BotPage({ goHome }) {
 }
 
 export default function App() {
-  const [path, setPath] = useState(() => window.location.pathname);
-
-  function navigate(nextPath) {
-    window.history.pushState({}, '', nextPath);
-    setPath(nextPath);
-  }
-
-  useEffect(() => {
-    const handlePopState = () => setPath(window.location.pathname);
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
-
-  if (path === '/bot') {
-    return <BotPage goHome={() => navigate('/')} />;
-  }
-
-  return <HomePage goToBot={() => navigate('/bot')} />;
+  return <BotPage />;
 }

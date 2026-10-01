@@ -4,8 +4,7 @@ Repositori ini adalah versi publik untuk kebutuhan dokumentasi skripsi. Isi repo
 
 © 2026 Copyright by Muhammad Wildan Kamil, Afrida Helen, Mira Suryani.
 
-- halaman Beranda IMC-MASK;
-- halaman penuh Muallaf Bot;
+- halaman Muallaf Bot sebagai halaman utama;
 - backend FastAPI;
 - pipeline Retrieval-Augmented Generation berbasis LangChain;
 - guardrail dan fallback;
@@ -25,7 +24,7 @@ backend/
     processed/                 # chunks.json hasil build, belum ikut Git
     vector_db/                 # embeddings/vector store, belum ikut Git
 frontend/
-  src/                         # Beranda dan halaman Muallaf Bot
+  src/                         # Halaman Muallaf Bot
 docs/
   ragas_evaluation_questions_template.csv
 ```
@@ -93,16 +92,17 @@ npm install
 npm run dev
 ```
 
-Buka:
+Buka halaman chatbot:
 
 ```text
 http://localhost:5173
 ```
 
-Halaman chatbot tersedia di:
+Untuk menampilkan tombol feedback, buat Google Form lalu isi URL-nya di
+`frontend/.env`:
 
 ```text
-http://localhost:5173/bot
+VITE_FEEDBACK_URL=https://forms.gle/ID_FORM_ANDA
 ```
 
 ## Contoh CLI Untuk Skripsi

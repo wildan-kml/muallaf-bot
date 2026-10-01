@@ -58,33 +58,6 @@ def warmup_rag_pipeline() -> None:
         logger.warning("RAG warmup failed; the first chat request may be slower.", exc_info=True)
 
 
-HOME_CONTENT = {
-    "brand": {
-        "name": "International Muallaf Center",
-        "short_name": "IMC-MASK",
-        "subtitle": "Masjid Agung Sunda Kelapa",
-    },
-    "hero": {
-        "headline": "Bersama Menuju Islam dengan Ilmu dan Pembinaan",
-        "description": (
-            "IMC-MASK mendampingi muallaf dengan bimbingan syahadat, "
-            "pembinaan, dan ilmu Islam secara terstruktur dan penuh kasih."
-        ),
-    },
-    "services": [
-        "Ikrar Syahadat",
-        "Konsultasi Agama",
-        "Pembinaan Muallaf",
-        "Layanan Bahasa",
-        "Pendampingan",
-    ],
-    "schedule": {
-        "days": "Setiap hari Rabu & Sabtu",
-        "time": "Pukul 10.00 - 16.00 WIB",
-        "place": "Gedung Fatahillah Lt. 4, Masjid Agung Sunda Kelapa",
-    },
-}
-
 def get_bot_suggestions(limit: int = 6) -> list[dict[str, str]]:
     representative_questions = [
         ("Saya ingin masuk Islam, langkah awalnya apa?", "syahadat"),
@@ -106,11 +79,6 @@ def health_check() -> dict[str, str]:
         "status": "ok",
         "message": "IMC-MASK RAG backend is running",
     }
-
-
-@app.get("/api/homepage")
-def get_homepage() -> dict:
-    return HOME_CONTENT
 
 
 @app.get("/api/chat/suggestions")
