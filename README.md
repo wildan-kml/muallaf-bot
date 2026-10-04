@@ -84,6 +84,38 @@ Output lokal yang terbentuk:
 File output ini tidak diunggah ke GitHub karena berisi hasil ekstraksi dokumen rujukan.
 Untuk saat ini proses uji coba tetap difokuskan di repo utama `imc-mask`; `processed` dan `vector_db` akan dimasukkan ke versi publik setelah hasilnya stabil.
 
+### Penyimpanan PDF publik
+
+PDF rujukan publik disimpan di `backend/data/raw_pdfs/` dan ikut tercatat di
+Git. Empat PDF saat ini berukuran total sekitar 16 MB, sehingga masih layak
+dibawa bersama deployment backend. Endpoint berikut digunakan oleh viewer:
+
+```text
+GET /api/documents/files/{nama-file.pdf}
+GET /api/documents/download/{nama-file.pdf}
+```
+
+Tautan rujukan PDF membuka viewer internal Muallaf Bot. Viewer menyediakan
+tombol kembali tanpa menghapus riwayat chat, tombol buka pada tab baru, dan
+tombol unduh. Rujukan Website IMC-MASK hanya ditampilkan sebagai teks dan belum
+dapat dibuka. Jika jumlah atau ukuran PDF bertambah besar, pindahkan berkas ke
+object storage permanen dan pertahankan nama atau ID dokumen pada metadata
+knowledge base.
+
+### Troubleshooting build knowledge base
+
+Jika proses menghasilkan `chunks.json` tetapi menampilkan pesan berikut:
+
+```text
+The paging file is too small for this operation to complete. (os error 1455)
+```
+
+ekstraksi PDF sudah berhasil, tetapi Windows tidak memiliki RAM/virtual memory
+yang cukup untuk memuat model embedding. Tutup aplikasi yang banyak memakai
+memori atau tambah ukuran paging file Windows, buka terminal baru, lalu jalankan
+ulang `scripts\build_knowledge_base.py`. Peringatan `HF_TOKEN` bukan penyebab
+kegagalan; token hanya memengaruhi rate limit dan kecepatan unduhan model.
+
 ## Menjalankan Frontend
 
 ```powershell
@@ -98,12 +130,52 @@ Buka halaman chatbot:
 http://localhost:5173
 ```
 
-Untuk menampilkan tombol feedback, buat Google Form lalu isi URL-nya di
-`frontend/.env`:
+Frontend mempertahankan riwayat chat di penyimpanan lokal sampai pengguna
+menekan tombol `Ulangi chat`. Request yang masih diproses juga dipulihkan
+setelah halaman dimuat ulang. Indikator berpikir ditampilkan sekurang-kurangnya
+sekitar 5 detik, sedangkan request yang belum selesai setelah 90 detik dihentikan
+dengan pesan kesalahan agar antarmuka tidak menggantung tanpa batas.
+
+Tombol `Kirim Feedback` membuka formulir bawaan. Identitas bersifat opsional,
+sedangkan email dan isi feedback wajib diisi. Feedback dikirim ke
+`mwildankamil@gmail.com` dengan subjek `Feedback Muallaf Bot`, lalu disimpan
+sebagai cadangan JSON Lines di `backend/data/feedback/feedback.jsonl`.
+Direktori tersebut diabaikan Git agar data pengguna tidak ikut terpublikasi.
+
+Aktifkan pengiriman email melalui `backend/.env`:
 
 ```text
-VITE_FEEDBACK_URL=https://forms.gle/ID_FORM_ANDA
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=alamat-pengirim@gmail.com
+SMTP_PASSWORD=app_password_gmail
+SMTP_FROM_EMAIL=alamat-pengirim@gmail.com
+FEEDBACK_RECIPIENT=mwildankamil@gmail.com
+FEEDBACK_SUBJECT=Feedback Muallaf Bot
+FEEDBACK_RATE_LIMIT_SECONDS=900
+TRUST_PROXY_HEADERS=false
 ```
+
+Untuk Gmail, aktifkan verifikasi dua langkah lalu buat App Password. Jangan
+memasukkan password akun Gmail biasa dan jangan commit file `.env`. Backend
+membatasi satu percobaan feedback per alamat IP setiap 15 menit. Frontend juga
+menyimpan cooldown 15 menit di browser. Setelah berhasil, form berubah menjadi
+konfirmasi ringkas dan menutup otomatis setelah lima detik. Aktifkan `TRUST_PROXY_HEADERS=true`
+hanya jika deployment berada di belakang reverse proxy tepercaya yang mengatur
+header `X-Forwarded-For`.
+
+## Dokumentasi Respons
+
+Tangkapan layar kondisi awal serta contoh respons substantif, klarifikasi
+ambigu, personal legal/religious, krisis keselamatan, dan pertanyaan di luar
+konteks tersedia di:
+
+```text
+docs/screenshots/
+```
+
+Lihat `docs/screenshots/README.md` untuk pertanyaan, mode respons, dan cara
+membuat ulang screenshot dari endpoint chatbot yang sedang berjalan.
 
 ## Contoh CLI Untuk Skripsi
 

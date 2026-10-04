@@ -13,11 +13,12 @@ function toApiHistory(messages) {
     .filter((message) => message.text.length > 0);
 }
 
-export async function sendChatQuestion(question, history = []) {
+export async function sendChatQuestion(question, history = [], { signal } = {}) {
   const response = await fetch(`${API_BASE_URL}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ question, history: toApiHistory(history) }),
+    signal,
   });
 
   if (!response.ok) {
@@ -32,4 +33,28 @@ export async function sendChatQuestion(question, history = []) {
     sources: Array.isArray(data.sources) ? data.sources : [],
     nextActions: Array.isArray(data.next_actions) ? data.next_actions : [],
   };
+}
+
+export async function sendFeedback({ identity, email, feedback }) {
+  const response = await fetch(`${API_BASE_URL}/api/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      identity: identity.trim() || null,
+      email: email.trim() || null,
+      feedback: feedback.trim(),
+    }),
+  });
+
+  if (!response.ok) {
+    let message = 'Feedback belum dapat dikirim. Silakan coba kembali.';
+    try {
+      const errorData = await response.json();
+      if (typeof errorData.detail === 'string') message = errorData.detail;
+    } catch {
+      // Keep the safe default when the backend does not return JSON.
+    }
+    throw new Error(message);
+  }
+  return response.json();
 }

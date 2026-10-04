@@ -67,6 +67,15 @@ class Settings:
     chunk_size: int
     chunk_overlap: int
     rag_engine: str
+    smtp_host: str
+    smtp_port: int
+    smtp_username: str
+    smtp_password: str
+    smtp_from_email: str
+    feedback_recipient: str
+    feedback_subject: str
+    feedback_rate_limit_seconds: int
+    trust_proxy_headers: bool
 
 
 @lru_cache(maxsize=1)
@@ -86,6 +95,8 @@ def get_settings() -> Settings:
     raw_pdfs_dir = BACKEND_ROOT / "data" / "raw_pdfs"
     processed_dir = BACKEND_ROOT / "data" / "processed"
     vector_db_dir = BACKEND_ROOT / "data" / "vector_db"
+
+    smtp_username = os.getenv("SMTP_USERNAME", "").strip()
 
     return Settings(
         project_root=PROJECT_ROOT,
@@ -110,4 +121,13 @@ def get_settings() -> Settings:
         chunk_size=_get_int("CHUNK_SIZE", 900),
         chunk_overlap=_get_int("CHUNK_OVERLAP", 120),
         rag_engine=os.getenv("RAG_ENGINE", "langchain").strip().lower(),
+        smtp_host=os.getenv("SMTP_HOST", "smtp.gmail.com").strip(),
+        smtp_port=_get_int("SMTP_PORT", 587),
+        smtp_username=smtp_username,
+        smtp_password=os.getenv("SMTP_PASSWORD", ""),
+        smtp_from_email=os.getenv("SMTP_FROM_EMAIL", smtp_username).strip(),
+        feedback_recipient=os.getenv("FEEDBACK_RECIPIENT", "mwildankamil@gmail.com").strip(),
+        feedback_subject=os.getenv("FEEDBACK_SUBJECT", "Feedback Muallaf Bot").strip(),
+        feedback_rate_limit_seconds=max(60, _get_int("FEEDBACK_RATE_LIMIT_SECONDS", 900)),
+        trust_proxy_headers=os.getenv("TRUST_PROXY_HEADERS", "false").strip().lower() in {"1", "true", "yes"},
     )

@@ -36,6 +36,7 @@ docs/ragas_raw_responses*.jsonl
 # Source documents are public; generated vector data is rebuilt locally for now.
 backend/data/processed/*.json
 backend/data/vector_db/*
+backend/data/feedback/
 !backend/data/raw_pdfs/.gitkeep
 !backend/data/processed/.gitkeep
 !backend/data/vector_db/.gitkeep

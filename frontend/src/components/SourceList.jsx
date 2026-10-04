@@ -1,14 +1,18 @@
 import React from 'react';
-import { API_BASE_URL } from '../services/chatApi';
-
-const GOOGLE_DRIVE_FILES = {
-  'Mengenal Islam Lebih Dekat bersama Masjid Agung Sunda Kelapa': '1eYXxsaZydPHNZ-qJMU1VSt7RIZTz3sVu',
-  'Modul Pembinaan Mualaf': '1fFru9BO9vISZPajq_UA-znMfDoHRc4ap',
-  'Tata Cara Ibadah Praktis untuk Mualaf': '1cg3I8OBLLbXvaF0_bi_yrttOSwBInpZb',
-};
 
 function getDocumentTitle(source) {
   return source?.document_title || 'Sumber dokumen';
+}
+
+function isWebsiteSource(source) {
+  const title = getDocumentTitle(source).toLowerCase();
+  return source?.source_type === 'website'
+    || title.startsWith('website international muallaf center')
+    || title.includes('website imc-mask');
+}
+
+function getDisplayTitle(source) {
+  return isWebsiteSource(source) ? 'Website IMC-MASK' : getDocumentTitle(source);
 }
 
 function formatPage(source) {
@@ -17,28 +21,7 @@ function formatPage(source) {
   return `halaman ${source.page_number}`;
 }
 
-function getSourceHref(source) {
-  if (source?.file_name) {
-    const fileUrl = `${API_BASE_URL}/api/documents/files/${encodeURIComponent(source.file_name)}`;
-    if (source?.page_number) {
-      return `${fileUrl}#page=${source.page_number}`;
-    }
-    return fileUrl;
-  }
-
-  const title = getDocumentTitle(source);
-  const fileId = GOOGLE_DRIVE_FILES[title];
-
-  if (!fileId) return null;
-
-  const baseUrl = `https://drive.google.com/file/d/${fileId}/preview`;
-  if (source?.page_number) {
-    return `${baseUrl}#page=${source.page_number}`;
-  }
-  return baseUrl;
-}
-
-export default function SourceList({ sources = [] }) {
+export default function SourceList({ sources = [], onOpenSource }) {
   if (!sources.length) return null;
 
   return (
@@ -46,23 +29,23 @@ export default function SourceList({ sources = [] }) {
       <span className="source-list-title">Rujukan</span>
       <ul className="source-list-items">
         {sources.map((source, index) => {
-          const href = getSourceHref(source);
           const title = getDocumentTitle(source);
+          const displayTitle = getDisplayTitle(source);
+          const canOpenDocument = !isWebsiteSource(source) && Boolean(source?.file_name) && Boolean(onOpenSource);
 
           return (
             <li className="source-citation" key={`${source.chunk_id || source.document_title || 'source'}-${index}`}>
-              {href ? (
-                <a
+              {canOpenDocument ? (
+                <button
+                  type="button"
                   className="source-link"
-                  href={href}
-                  target="_blank"
-                  rel="noreferrer"
+                  onClick={() => onOpenSource(source)}
                   title={`Buka ${title}${source?.page_number ? ` halaman ${source.page_number}` : ''}`}
                 >
-                  <strong>{title}</strong>
-                </a>
+                  <strong>{displayTitle}</strong>
+                </button>
               ) : (
-                <strong>{title}</strong>
+                <strong>{displayTitle}</strong>
               )}
               <span>, {formatPage(source)}</span>
             </li>

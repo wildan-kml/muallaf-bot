@@ -86,6 +86,38 @@ def make_pipeline(top_k: int = 4) -> tuple[RagPipeline, FakeVectorStore]:
 
 
 class RobustnessAndGuardrailHardeningTests(unittest.TestCase):
+    def test_non_substantive_check_does_not_enter_retrieval(self) -> None:
+        pipeline, vector_store = make_pipeline()
+
+        response = pipeline.answer("Cek")
+
+        self.assertEqual(response.mode, "fallback")
+        self.assertEqual(response.model_status, "needs_question")
+        self.assertEqual(response.escalation, "non_substantive_input")
+        self.assertEqual(response.sources, [])
+        self.assertEqual(vector_store.queries, [])
+
+    def test_unrelated_paud_research_question_is_out_of_scope(self) -> None:
+        pipeline, vector_store = make_pipeline()
+
+        response = pipeline.answer(
+            "Bagaimana hubungan antara masalah tidur dengan regulasi emosi anak usia 3-6 tahun "
+            "di beberapa PAUD kecamatan Jatinangor"
+        )
+
+        self.assertEqual(response.mode, "fallback")
+        self.assertEqual(response.escalation, "out_of_scope_question")
+        self.assertEqual(response.sources, [])
+        self.assertEqual(vector_store.queries, [])
+
+    def test_islamic_parenting_question_is_not_overblocked_by_paud_rule(self) -> None:
+        pipeline, vector_store = make_pipeline()
+
+        response = pipeline.answer("Bagaimana mendidik anak dengan akhlak Islam?")
+
+        self.assertNotEqual(response.escalation, "out_of_scope_question")
+        self.assertTrue(vector_store.queries)
+
     def test_conservative_fused_query_normalization(self) -> None:
         self.assertEqual(normalize_user_query("Bagaimanacaranya"), "bagaimana caranya")
         self.assertEqual(normalize_user_query("  Bagaimanacaranya?  "), "bagaimana caranya")
@@ -151,6 +183,46 @@ class RobustnessAndGuardrailHardeningTests(unittest.TestCase):
         self.assertEqual(response.mode, "fallback")
         self.assertEqual(response.escalation, "immediate_safety_or_crisis")
         self.assertEqual(response.model_status, "guardrail:immediate_safety_or_crisis")
+        self.assertEqual(vector_store.queries, [])
+
+    def test_withdrawal_follow_up_after_self_harm_history_stays_in_crisis_guardrail(self) -> None:
+        pipeline, vector_store = make_pipeline()
+        history = [
+            ChatMessage(role="user", text="Saya ingin bunuh diri."),
+            ChatMessage(
+                role="bot",
+                text="Keselamatan Anda yang paling utama. Hubungi orang tepercaya sekarang.",
+            ),
+        ]
+
+        response = pipeline.answer("Gamau. Bye", history=history)
+
+        self.assertEqual(response.mode, "fallback")
+        self.assertEqual(response.escalation, "immediate_safety_or_crisis")
+        self.assertEqual(response.model_status, "guardrail:immediate_safety_or_crisis")
+        self.assertEqual(vector_store.queries, [])
+
+    def test_clear_new_topic_after_crisis_history_does_not_keep_crisis_attached(self) -> None:
+        pipeline, vector_store = make_pipeline()
+        history = [ChatMessage(role="user", text="Saya ingin bunuh diri.")]
+
+        response = pipeline.answer("Apa itu wudu?", history=history)
+
+        self.assertNotEqual(response.escalation, "immediate_safety_or_crisis")
+        self.assertTrue(vector_store.queries)
+
+    def test_short_withdrawal_chain_can_reach_recent_crisis_context(self) -> None:
+        pipeline, vector_store = make_pipeline()
+        history = [
+            ChatMessage(role="user", text="Saya ingin bunuh diri."),
+            ChatMessage(role="bot", text="Keselamatan Anda yang paling utama."),
+            ChatMessage(role="user", text="Gamau. Bye"),
+            ChatMessage(role="bot", text="Tolong jangan hadapi ini sendirian."),
+        ]
+
+        response = pipeline.answer("Sudahlah", history=history)
+
+        self.assertEqual(response.escalation, "immediate_safety_or_crisis")
         self.assertEqual(vector_store.queries, [])
 
     def test_explicit_self_harm_ideation_uses_crisis_escalation(self) -> None:

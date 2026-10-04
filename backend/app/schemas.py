@@ -68,3 +68,14 @@ class ContactRequest(BaseModel):
 class ContactResponse(BaseModel):
     status: str
     message: str
+
+
+class FeedbackRequest(BaseModel):
+    identity: str | None = Field(default=None, max_length=120)
+    email: str = Field(..., min_length=5, max_length=160, pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+    feedback: str = Field(..., min_length=3, max_length=5000)
+
+
+class FeedbackResponse(BaseModel):
+    status: str
+    message: str

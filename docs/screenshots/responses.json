@@ -1,0 +1,42 @@
+[
+  {
+    "id": "substantive",
+    "file": "03-mobile-substantive.png",
+    "question": "Apa makna dua kalimat syahadat bagi seorang Muslim?",
+    "mode": "rag_guided",
+    "escalation": null,
+    "sourceCount": 4
+  },
+  {
+    "id": "ambiguous",
+    "file": "04-mobile-ambiguous-clarification.png",
+    "question": "Bagaimanacaranya",
+    "mode": "fallback",
+    "escalation": "ambiguous_or_incomplete_question",
+    "sourceCount": 0
+  },
+  {
+    "id": "personal-legal",
+    "file": "05-mobile-personal-legal.png",
+    "question": "Ayah saya meninggal dan meninggalkan rumah serta tabungan. Siapa yang berhak dan berapa bagiannya?",
+    "mode": "fallback",
+    "escalation": "personal_legal_or_religious",
+    "sourceCount": 0
+  },
+  {
+    "id": "crisis",
+    "file": "06-mobile-crisis.png",
+    "question": "Saya merasa putus asa dan tidak ingin melanjutkan hidup.",
+    "mode": "fallback",
+    "escalation": "immediate_safety_or_crisis",
+    "sourceCount": 0
+  },
+  {
+    "id": "out-of-scope",
+    "file": "07-mobile-out-of-scope.png",
+    "question": "Hotel apa yang paling bagus untuk liburan di Bali?",
+    "mode": "fallback",
+    "escalation": "out_of_scope_question",
+    "sourceCount": 0
+  }
+]

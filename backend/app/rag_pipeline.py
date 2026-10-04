@@ -344,6 +344,16 @@ OUT_OF_SCOPE_CATEGORY_RULES = {
         "core": {"cuaca", "prakiraan", "ramalan", "prediksi"},
         "intent": {"hari ini", "besok", "akhir pekan", "minggu ini", "sekarang"},
     },
+    "riset_pendidikan_anak": {
+        "core": {
+            "paud", "anak usia dini", "regulasi emosi", "masalah tidur",
+            "tumbuh kembang anak",
+        },
+        "intent": {
+            "hubungan antara", "pengaruh", "korelasi", "penelitian",
+            "beberapa paud", "kecamatan",
+        },
+    },
 }
 
 IN_SCOPE_TERMS = {
@@ -431,6 +441,14 @@ AMBIGUOUS_INCOMPLETE_QUERIES = {
 }
 
 
+NON_SUBSTANTIVE_INPUTS = {
+    "cek",
+    "test",
+    "tes",
+    "ping",
+}
+
+
 MUALAF_CONTEXT_TERMS = {
     "mualaf",
     "muallaf",
@@ -460,6 +478,18 @@ SAFETY_FOLLOW_UP_HINTS = {
     "apa yang harus saya lakukan",
     "apa yang sebaiknya saya lakukan",
     "bagaimana sekarang",
+    "gamau",
+    "ga mau",
+    "gak mau",
+    "nggak mau",
+    "tidak mau",
+    "biarin",
+    "biarkan",
+    "sudahlah",
+    "udah",
+    "percuma",
+    "bye",
+    "dadah",
 }
 
 SELF_HARM_CRISIS_TERMS = {
@@ -624,6 +654,26 @@ def is_ambiguous_or_incomplete_query(question: str, history: list[ChatMessage] |
     return not _has_resolving_history(cleaned, history)
 
 
+def _is_non_substantive_input(question: str) -> bool:
+    cleaned = _normalize_text(question).lower().strip(" .?!,;:")
+    return cleaned in NON_SUBSTANTIVE_INPUTS
+
+
+def _non_substantive_response() -> ChatResponse:
+    answer = (
+        "Pesan Anda sudah diterima. Silakan tuliskan pertanyaan yang ingin dibahas "
+        "tentang mualaf, syahadat, ibadah dasar, pembinaan, atau layanan IMC-MASK."
+    )
+    return ChatResponse(
+        answer=answer,
+        reply=answer,
+        mode="fallback",
+        next_actions=["Tulis pertanyaan"],
+        model_status="needs_question",
+        escalation="non_substantive_input",
+    )
+
+
 def _clarification_reply(question: str) -> str:
     cleaned = _normalize_text(question).lower().strip(" .?!,;:")
     if cleaned == "bagaimana mualaf":
@@ -661,10 +711,31 @@ def _is_contextual_safety_follow_up(question: str) -> bool:
 def _build_contextual_safety_query(question: str, history: list[ChatMessage] | None = None) -> str:
     if not _is_contextual_safety_follow_up(question):
         return question
-    previous_question = _last_user_question_from_history(history)
-    if not previous_question:
+    safety_context = _recent_safety_context_from_history(history)
+    if not safety_context:
         return question
-    return f"{previous_question}. {question}"
+    return f"{safety_context}. {question}"
+
+
+def _recent_safety_context_from_history(history: list[ChatMessage] | None = None) -> str | None:
+    if not history:
+        return None
+
+    follow_up_chain: list[str] = []
+    for message in reversed(history):
+        if message.role != "user":
+            continue
+        text = _clean_question(message.text)
+        if not text:
+            continue
+        if _is_immediate_safety_or_crisis(text):
+            return ". ".join([text, *reversed(follow_up_chain)])
+        if not _is_contextual_safety_follow_up(text):
+            break
+        follow_up_chain.append(text)
+        if len(follow_up_chain) >= 2:
+            break
+    return None
 
 
 def _is_immediate_safety_or_crisis(question: str) -> bool:
@@ -2387,6 +2458,9 @@ class RagPipeline:
 
         if _is_prompt_injection_attempt(question):
             return _prompt_injection_response()
+
+        if _is_non_substantive_input(question):
+            return _non_substantive_response()
 
         if is_ambiguous_or_incomplete_query(question, history):
             return _clarification_response(question)
