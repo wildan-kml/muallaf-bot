@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 
 
 const SCRIPT_ID = 'cloudflare-turnstile-script';
