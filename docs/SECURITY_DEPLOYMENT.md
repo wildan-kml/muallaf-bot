@@ -34,13 +34,17 @@ per-lokasi dan permisif.
 Jalankan PowerShell. Perintah ini tidak menulis secret ke repository.
 
 ```powershell
+$rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+
 $originBytes = New-Object byte[] 48
-[Security.Cryptography.RandomNumberGenerator]::Fill($originBytes)
+$rng.GetBytes($originBytes)
 $originSecret = [Convert]::ToBase64String($originBytes)
 
 $humanBytes = New-Object byte[] 48
-[Security.Cryptography.RandomNumberGenerator]::Fill($humanBytes)
+$rng.GetBytes($humanBytes)
 $humanSecret = [Convert]::ToBase64String($humanBytes)
+
+$rng.Dispose()
 ```
 
 Simpan sementara kedua nilai di password manager:
