@@ -76,6 +76,13 @@ class Settings:
     feedback_subject: str
     feedback_rate_limit_seconds: int
     trust_proxy_headers: bool
+    database_url: str
+    jwt_secret: str
+    access_token_minutes: int
+    chat_retention_days: int
+    allow_registration: bool
+    debug_endpoint_enabled: bool
+    environment: str
 
 
 @lru_cache(maxsize=1)
@@ -97,6 +104,10 @@ def get_settings() -> Settings:
     vector_db_dir = BACKEND_ROOT / "data" / "vector_db"
 
     smtp_username = os.getenv("SMTP_USERNAME", "").strip()
+    database_url = os.getenv(
+        "DATABASE_URL",
+        f"sqlite:///{(BACKEND_ROOT / 'data' / 'app.db').as_posix()}",
+    ).strip()
 
     return Settings(
         project_root=PROJECT_ROOT,
@@ -130,4 +141,11 @@ def get_settings() -> Settings:
         feedback_subject=os.getenv("FEEDBACK_SUBJECT", "Feedback Muallaf Bot").strip(),
         feedback_rate_limit_seconds=max(60, _get_int("FEEDBACK_RATE_LIMIT_SECONDS", 900)),
         trust_proxy_headers=os.getenv("TRUST_PROXY_HEADERS", "false").strip().lower() in {"1", "true", "yes"},
+        database_url=database_url,
+        jwt_secret=os.getenv("JWT_SECRET", "change-this-development-secret").strip(),
+        access_token_minutes=max(15, _get_int("ACCESS_TOKEN_MINUTES", 480)),
+        chat_retention_days=max(1, _get_int("CHAT_RETENTION_DAYS", 30)),
+        allow_registration=os.getenv("ALLOW_REGISTRATION", "true").strip().lower() in {"1", "true", "yes"},
+        debug_endpoint_enabled=os.getenv("DEBUG_ENDPOINT_ENABLED", "false").strip().lower() in {"1", "true", "yes"},
+        environment=os.getenv("APP_ENV", "development").strip().lower(),
     )

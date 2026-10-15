@@ -310,6 +310,15 @@ class RobustnessAndGuardrailHardeningTests(unittest.TestCase):
         self.assertEqual(response.escalation, "general_sensitive")
         self.assertEqual(vector_store.queries, [])
 
+    def test_personal_marriage_validity_question_uses_legal_guardrail(self) -> None:
+        pipeline, vector_store = make_pipeline()
+
+        response = pipeline.answer("Apakah pernikahan saya otomatis batal setelah saya masuk Islam?")
+
+        self.assertEqual(response.mode, "fallback")
+        self.assertEqual(response.escalation, "personal_legal_or_religious")
+        self.assertEqual(vector_store.queries, [])
+
     def test_normal_short_questions_are_not_marked_ambiguous(self) -> None:
         normal_questions = [
             "Apa itu wudu?",

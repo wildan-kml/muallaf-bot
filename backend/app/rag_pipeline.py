@@ -998,6 +998,7 @@ PERSONAL_CASE_TERMS = {
     "kasus saya", "kondisi saya", "situasi saya", "keluarga saya", "anak saya",
     "suami saya", "istri saya", "ayah saya", "ibu saya", "warisan saya",
     "harta saya", "rumah saya", "tabungan saya", "status pernikahan saya",
+    "pernikahan saya", "nikah saya",
     "tolong hitungkan", "hitungkan", "apakah saya harus cerai",
     "haruskah saya cerai", "apakah saya harus menggugat",
     "apakah saya harus menggugurkan", "perlukah menggugurkan",
@@ -2333,7 +2334,7 @@ class RagPipeline:
     def status(self) -> dict[str, Any]:
         llm_model = self.settings.gemini_model if self.settings.llm_provider == "gemini" else self.settings.ollama_model
         if self.settings.llm_provider == "auto":
-            llm_model = f"auto: {self.settings.gemini_model} -> {self.settings.ollama_model}"
+            llm_model = f"auto: {self.settings.gemini_model} -> deterministic extractive fallback"
 
         return {
             "mode": "rag",
@@ -2613,7 +2614,7 @@ class RagPipeline:
         if self.settings.llm_provider == "ollama":
             return bool(self.settings.ollama_base_url and self.settings.ollama_model)
         if self.settings.llm_provider == "auto":
-            return bool(self.settings.gemini_api_key) or bool(self.settings.ollama_base_url and self.settings.ollama_model)
+            return bool(self.settings.gemini_api_key)
         return False
 
     def _retrieve_results(self, query: str, top_k: int) -> list[RetrievalResult]:
@@ -2634,12 +2635,10 @@ class RagPipeline:
 
     def _generation_providers(self) -> list[str]:
         if self.settings.llm_provider == "auto":
-            providers: list[str] = []
-            if self.settings.gemini_api_key:
-                providers.append("gemini")
-            if self.settings.ollama_base_url and self.settings.ollama_model:
-                providers.append("ollama")
-            return providers
+            # Never fail over from a reviewed cloud model to an unvalidated
+            # local model for religious guidance.  The caller already provides
+            # a deterministic extractive answer when generation is unavailable.
+            return ["gemini"] if self.settings.gemini_api_key else []
         return [self.settings.llm_provider]
 
     def _try_generate_with_provider(

@@ -26,6 +26,7 @@ class ChatRequest(BaseModel):
     question: str | None = Field(default=None, max_length=1000)
     message: str | None = Field(default=None, max_length=1000)
     history: list[ChatMessage] = Field(default_factory=list)
+    session_id: str | None = Field(default=None, max_length=36)
 
     @property
     def prompt(self) -> str:
@@ -45,6 +46,7 @@ class ChatResponse(BaseModel):
     source: str | None = None
     kb_id: str | None = None
     escalation: str | None = None
+    session_id: str | None = None
 
 
 class LoginRequest(BaseModel):
@@ -56,6 +58,34 @@ class LoginResponse(BaseModel):
     access_token: str
     token_type: str
     user: dict[str, str]
+
+
+class RegisterRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=100, pattern=r"^[a-zA-Z0-9_.-]+$")
+    display_name: str = Field(..., min_length=2, max_length=120)
+    password: str = Field(..., min_length=10, max_length=128)
+    privacy_accepted: bool
+
+
+class SessionCreateRequest(BaseModel):
+    title: str = Field(default="Percakapan baru", max_length=160)
+
+
+class SessionResponse(BaseModel):
+    id: str
+    title: str
+    created_at: str
+    updated_at: str
+    expires_at: str
+
+
+class StoredMessageResponse(BaseModel):
+    id: str
+    session_id: str
+    role: str
+    content: str
+    created_at: str
+    metadata: dict = Field(default_factory=dict)
 
 
 class ContactRequest(BaseModel):

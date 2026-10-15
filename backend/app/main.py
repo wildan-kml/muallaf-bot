@@ -11,22 +11,37 @@ from pathlib import Path
 from uuid import uuid4
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
+from .auth import (
+    AuthenticatedUser,
+    create_access_token,
+    get_current_user,
+    hash_password,
+    require_admin,
+    verify_password,
+)
+from .database import Database
 from .pipeline_factory import get_chatbot_pipeline
 from .schemas import (
     ChatRequest,
     ChatResponse,
+    ChatMessage,
     FeedbackRequest,
     FeedbackResponse,
+    LoginRequest,
+    LoginResponse,
+    RegisterRequest,
+    SessionCreateRequest,
 )
 
 
 settings = get_settings()
+database = Database(settings.database_url, settings.chat_retention_days)
 logger = logging.getLogger(__name__)
 _feedback_attempts: dict[str, float] = {}
 _feedback_rate_limit_lock = threading.Lock()
@@ -36,7 +51,7 @@ for directory in (settings.raw_pdfs_dir, settings.processed_dir, settings.vector
 
 app = FastAPI(
     title="IMC-MASK API",
-    version="0.2.0",
+    version="0.3.0",
     description="API IMC-MASK untuk chatbot Muallaf Bot berbasis RAG.",
 )
 
@@ -63,6 +78,10 @@ def warmup_rag_pipeline() -> None:
     lazily. Running a tiny retrieval during startup moves that cost to backend
     boot time, so the first visible chatbot response is faster.
     """
+    if settings.environment == "production" and settings.jwt_secret == "change-this-development-secret":
+        raise RuntimeError("JWT_SECRET wajib diganti sebelum deployment produksi.")
+    database.initialize()
+    database.purge_expired()
     try:
         pipeline = get_chatbot_pipeline()
         pipeline.status()
@@ -93,6 +112,111 @@ def health_check() -> dict[str, str]:
         "status": "ok",
         "message": "IMC-MASK RAG backend is running",
     }
+
+
+@app.get("/api/privacy")
+def privacy_notice() -> dict[str, Any]:
+    return {
+        "version": "2026-10-15",
+        "summary": (
+            "Akun dan riwayat percakapan disimpan untuk memulihkan sesi pengguna. "
+            f"Riwayat dihapus otomatis {settings.chat_retention_days} hari setelah aktivitas terakhir."
+        ),
+        "retention_days": settings.chat_retention_days,
+        "data_collected": ["nama tampilan", "nama pengguna", "riwayat percakapan", "feedback opsional"],
+        "not_collected": ["password asli", "nomor identitas", "data pembayaran"],
+        "user_controls": ["menghapus sesi", "keluar dari akun"],
+        "warning": "Jangan kirimkan kata sandi, nomor identitas, atau informasi pribadi yang tidak diperlukan.",
+    }
+
+
+def _public_user(user: dict[str, Any] | AuthenticatedUser) -> dict[str, str]:
+    return {
+        "id": str(user.id if isinstance(user, AuthenticatedUser) else user["id"]),
+        "username": str(user.username if isinstance(user, AuthenticatedUser) else user["username"]),
+        "display_name": str(user.display_name if isinstance(user, AuthenticatedUser) else user["display_name"]),
+        "role": str(user.role if isinstance(user, AuthenticatedUser) else user["role"]),
+    }
+
+
+@app.post("/api/auth/register", response_model=LoginResponse, status_code=201)
+def register(request: RegisterRequest) -> LoginResponse:
+    if not settings.allow_registration:
+        raise HTTPException(status_code=403, detail="Pendaftaran akun baru sedang ditutup")
+    if not request.privacy_accepted:
+        raise HTTPException(status_code=422, detail="Persetujuan privasi diperlukan")
+    username = request.username.strip().lower()
+    if database.get_user_by_username(username):
+        raise HTTPException(status_code=409, detail="Nama pengguna sudah digunakan")
+    try:
+        user = database.create_user(
+            username=username,
+            display_name=request.display_name.strip(),
+            password_hash=hash_password(request.password),
+        )
+    except Exception as exc:
+        logger.warning("Account registration failed.", exc_info=True)
+        if database.get_user_by_username(username):
+            raise HTTPException(status_code=409, detail="Nama pengguna sudah digunakan") from exc
+        raise HTTPException(status_code=503, detail="Akun belum dapat dibuat") from exc
+    token = create_access_token(user["id"], user["username"], settings.jwt_secret, settings.access_token_minutes)
+    return LoginResponse(access_token=token, token_type="bearer", user=_public_user(user))
+
+
+@app.post("/api/auth/login", response_model=LoginResponse)
+def login(request: LoginRequest) -> LoginResponse:
+    user = database.get_user_by_username(request.username.strip().lower())
+    if not user or not verify_password(request.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Nama pengguna atau kata sandi salah")
+    database.mark_login(user["id"])
+    token = create_access_token(user["id"], user["username"], settings.jwt_secret, settings.access_token_minutes)
+    return LoginResponse(access_token=token, token_type="bearer", user=_public_user(user))
+
+
+@app.get("/api/auth/me")
+def current_account(user: AuthenticatedUser = Depends(get_current_user)) -> dict[str, Any]:
+    return {"user": _public_user(user)}
+
+
+@app.get("/api/sessions")
+def list_chat_sessions(user: AuthenticatedUser = Depends(get_current_user)) -> dict[str, Any]:
+    return {"sessions": database.list_sessions(user.id)}
+
+
+@app.post("/api/sessions", status_code=201)
+def create_chat_session(
+    request: SessionCreateRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    return database.create_session(user.id, request.title)
+
+
+@app.get("/api/sessions/{session_id}/messages")
+def list_chat_messages(
+    session_id: str,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    try:
+        rows = database.list_messages(session_id, user.id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    messages = []
+    for row in rows:
+        try:
+            metadata = json.loads(row.pop("metadata_json", "{}"))
+        except json.JSONDecodeError:
+            metadata = {}
+        messages.append({**row, "metadata": metadata})
+    return {"messages": messages}
+
+
+@app.delete("/api/sessions/{session_id}", status_code=204)
+def delete_chat_session(
+    session_id: str,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> None:
+    if not database.delete_session(session_id, user.id):
+        raise HTTPException(status_code=404, detail="Sesi percakapan tidak ditemukan")
 
 
 @app.get("/api/chat/suggestions")
@@ -131,11 +255,14 @@ def download_document(file_name: str) -> FileResponse:
 
 
 @app.get("/api/debug/runtime")
-def debug_runtime() -> dict[str, Any]:
+def debug_runtime(user: AuthenticatedUser = Depends(get_current_user)) -> dict[str, Any]:
+    if not settings.debug_endpoint_enabled:
+        raise HTTPException(status_code=404, detail="Endpoint debug dinonaktifkan")
+    require_admin(user)
     pipeline = get_chatbot_pipeline()
     llm_model = settings.gemini_model if settings.llm_provider == "gemini" else settings.ollama_model
     if settings.llm_provider == "auto":
-        llm_model = f"auto: {settings.gemini_model} -> {settings.ollama_model}"
+        llm_model = f"auto: {settings.gemini_model} -> deterministic extractive fallback"
 
     return {
         "pid": os.getpid(),
@@ -155,12 +282,41 @@ def debug_runtime() -> dict[str, Any]:
 
 
 @app.post("/api/chat", response_model=ChatResponse)
-def chat(request: ChatRequest) -> ChatResponse:
+def chat(
+    request: ChatRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> ChatResponse:
     question = request.prompt
     if not question:
         raise HTTPException(status_code=422, detail="question atau message wajib diisi")
+    database.purge_expired(user_id=user.id)
+    session = None
+    if request.session_id:
+        session = database.get_session(request.session_id, user.id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Sesi percakapan tidak ditemukan atau sudah kedaluwarsa")
+    else:
+        session = database.create_session(user.id)
 
-    return get_chatbot_pipeline().answer(question, history=request.history)
+    stored_rows = database.list_messages(session["id"], user.id)
+    stored_history = [
+        ChatMessage(role=row["role"], text=row["content"])
+        for row in stored_rows[-6:]
+        if row["role"] in {"user", "bot"}
+    ]
+    history = request.history if not stored_history else stored_history
+    response = get_chatbot_pipeline().answer(question, history=history)
+    response.session_id = session["id"]
+    database.add_message(session["id"], user.id, "user", question)
+    metadata = response.model_dump(exclude={"answer", "reply", "session_id"}, mode="json")
+    database.add_message(
+        session["id"],
+        user.id,
+        "bot",
+        response.answer,
+        json.dumps(metadata, ensure_ascii=False),
+    )
+    return response
 
 
 def _feedback_client_ip(request: Request) -> str:

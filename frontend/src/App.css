@@ -36,6 +36,7 @@ body {
 
 button,
 textarea,
+input,
 a {
   font: inherit;
 }
@@ -46,6 +47,7 @@ button {
 
 button:focus-visible,
 textarea:focus-visible,
+input:focus-visible,
 a:focus-visible {
   outline: 3px solid rgba(8, 120, 69, 0.28);
   outline-offset: 2px;
@@ -97,6 +99,168 @@ a:focus-visible {
   opacity: 1;
   transition: opacity 150ms ease, transform 220ms ease;
 }
+
+.auth-page {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 100dvh;
+  padding: 24px;
+  overflow: auto;
+  background:
+    radial-gradient(circle at 15% 10%, rgba(8, 120, 69, 0.14), transparent 30%),
+    linear-gradient(145deg, #f5faf7, #e8f2ec);
+}
+
+.auth-card {
+  width: min(100%, 440px);
+  padding: clamp(28px, 5vw, 44px);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 24px 64px rgba(0, 45, 26, 0.12);
+}
+
+.auth-icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 16px;
+  border-radius: 16px;
+  background: var(--green-800);
+  color: white;
+}
+
+.auth-card h1 { margin: 0; color: var(--green-900); text-align: center; }
+.auth-card > p { margin: 10px 0 24px; color: var(--muted); text-align: center; line-height: 1.5; }
+.auth-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 5px; border-radius: 11px; background: var(--soft); }
+.auth-tabs button { padding: 9px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-weight: 700; }
+.auth-tabs button.is-active { background: white; color: var(--green-800); box-shadow: 0 2px 8px rgba(0,45,26,.08); }
+.auth-form { display: grid; gap: 16px; margin-top: 20px; }
+.auth-form > label:not(.privacy-consent) { display: grid; gap: 7px; color: var(--ink); font-size: 14px; font-weight: 650; }
+.auth-form input:not([type='checkbox']) { width: 100%; padding: 12px 13px; border: 1px solid var(--line); border-radius: 9px; background: white; color: var(--ink); }
+.privacy-consent { display: grid; grid-template-columns: 20px 1fr; gap: 9px; align-items: start; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.privacy-consent input { margin-top: 3px; }
+.privacy-consent button, .privacy-link { padding: 0; border: 0; background: transparent; color: var(--green-700); text-decoration: underline; }
+.privacy-link { justify-self: start; font-size: 13px; }
+.auth-status { margin: 0; padding: 10px 12px; border-radius: 8px; background: #fff0f0; color: #922; font-size: 13px; text-align: left; }
+.auth-submit { padding: 12px 18px; border: 0; border-radius: 9px; background: var(--green-800); color: white; font-weight: 750; }
+.auth-submit:disabled { cursor: wait; opacity: .65; }
+
+.privacy-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 25, 14, 0.56);
+}
+
+.privacy-dialog {
+  position: relative;
+  width: min(100%, 520px);
+  padding: 32px;
+  border-radius: 18px;
+  background: white;
+  color: var(--ink);
+  box-shadow: 0 28px 70px rgba(0,0,0,.22);
+}
+
+.privacy-dialog > svg { color: var(--green-700); }
+.privacy-dialog h2 { color: var(--green-900); }
+.privacy-dialog p { line-height: 1.6; }
+
+.account-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  color: var(--white);
+}
+
+.account-panel div {
+  display: grid;
+  min-width: 0;
+}
+
+.account-panel strong,
+.account-panel span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-panel span { font-size: 12px; opacity: 0.76; }
+.account-panel button {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  background: transparent;
+  color: white;
+}
+
+.new-session-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: white;
+  color: var(--green-800);
+  font-weight: 700;
+}
+
+.session-history {
+  display: grid;
+  gap: 7px;
+  margin: 18px 0 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.24);
+}
+
+.session-history h3 {
+  margin: 0 0 4px;
+  color: white;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.session-history > button {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
+  text-align: left;
+}
+
+.session-history > button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-history > button.is-active {
+  border-color: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.history-status { margin: 0; color: rgba(255,255,255,.8); font-size: 12px; }
 
 .sidebar-closed .question-sidebar {
   pointer-events: none;

@@ -1,0 +1,10 @@
+[Unit]
+Description=Delete expired Muallaf Bot chat sessions
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/muallaf-bot/deploy
+ExecStart=/usr/bin/docker compose exec -T api python scripts/purge_expired_chats.py
+

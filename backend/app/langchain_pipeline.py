@@ -8,6 +8,7 @@ from .rag_pipeline import (
     _make_prompt,
 )
 from .schemas import ChatMessage
+from .preprocessing import TextChunk
 from .vector_store import RetrievalResult
 from .vector_store import LangChainVectorStoreRetriever
 
@@ -53,9 +54,18 @@ class LangChainRagPipeline(RagPipeline):
             chunks_by_id = {chunk.chunk_id: chunk for chunk in self.vector_store.chunks}
             results: list[RetrievalResult] = []
             for document in documents:
-                chunk = chunks_by_id.get(document.metadata.get("chunk_id"))
+                metadata = document.metadata
+                chunk = chunks_by_id.get(metadata.get("chunk_id"))
                 if chunk is None:
-                    continue
+                    # A remote pgvector result remains usable even when the
+                    # container has no generated local chunk file.
+                    chunk = TextChunk(
+                        chunk_id=str(metadata.get("chunk_id") or "remote-chunk"),
+                        content=document.page_content,
+                        document_title=str(metadata.get("document_title") or "Dokumen rujukan"),
+                        page_number=int(metadata.get("page_number") or 1),
+                        file_name=str(metadata.get("file_name") or ""),
+                    )
                 results.append(
                     RetrievalResult(
                         chunk=chunk,

@@ -8,10 +8,21 @@ Repositori ini adalah versi publik untuk kebutuhan dokumentasi skripsi. Isi repo
 - backend FastAPI;
 - pipeline Retrieval-Augmented Generation berbasis LangChain;
 - guardrail dan fallback;
+- login, sesi, dan histori percakapan lintas perangkat;
+- retensi data 30 hari serta kontrol privasi;
+- PostgreSQL eksternal untuk data aplikasi;
 - script build knowledge base;
 - script evaluasi dan contoh output CLI.
 
 Fitur admin dashboard dan aset privat tidak disertakan dalam versi publik ini.
+
+## Deployment tanpa komputer menyala
+
+Panduan produksi Google Cloud Run + Neon tersedia di
+[`deploy/cloud-run/README.md`](deploy/cloud-run/README.md). Deployment tersebut
+tidak memerlukan Ubuntu atau server pribadi: proses build dan deployment dapat
+dijalankan seluruhnya melalui Google Cloud Shell di browser. Konfigurasi memakai
+scale-to-zero dan maksimum satu instance untuk menekan penggunaan free tier.
 
 ## Struktur
 
@@ -43,6 +54,16 @@ File berikut tidak disertakan ke GitHub:
 
 Gunakan `backend/.env.example` sebagai template konfigurasi lokal.
 
+Endpoint chat dan histori memerlukan token login. Password disimpan sebagai
+hash PBKDF2-SHA256 dengan salt unik; token browser hanya dipertahankan selama
+tab aktif. Endpoint debug nonaktif secara default dan, jika sengaja diaktifkan,
+hanya dapat dibuka oleh akun berperan admin.
+
+Riwayat percakapan disimpan di database dan kedaluwarsa 30 hari setelah
+aktivitas terakhir. Pengguna dapat memulai serta menghapus sesi sendiri.
+Pemberitahuan privasi tersedia di `GET /api/privacy` dan ditampilkan sebelum
+pendaftaran akun.
+
 ## Menjalankan Backend
 
 ```powershell
@@ -52,7 +73,13 @@ python -m venv .venv
 Copy-Item .env.example .env
 ```
 
-Isi `GEMINI_API_KEY` di `backend/.env` jika memakai Gemini. Jika ingin offline, jalankan Ollama dan gunakan provider `ollama` atau `auto`.
+Isi `GEMINI_API_KEY` di `backend/.env` jika memakai Gemini. Mode `auto` hanya
+menggunakan Gemini yang dikonfigurasi; bila gagal sistem beralih ke jawaban
+ekstraktif deterministik dari dokumen, bukan ke model lokal yang belum lolos
+evaluasi. Provider Ollama tetap tersedia hanya untuk eksperimen lokal eksplisit.
+
+Untuk pengembangan lokal, gunakan `DATABASE_URL=sqlite:///data/app.db`. Untuk
+produksi, gunakan connection string PostgreSQL eksternal dan ganti `JWT_SECRET`.
 
 Jalankan FastAPI:
 
@@ -130,9 +157,9 @@ Buka halaman chatbot:
 http://localhost:5173
 ```
 
-Frontend mempertahankan riwayat chat di penyimpanan lokal sampai pengguna
-menekan tombol `Ulangi chat`. Request yang masih diproses juga dipulihkan
-setelah halaman dimuat ulang. Indikator berpikir ditampilkan sekurang-kurangnya
+Frontend memulihkan riwayat chat dari database setelah pengguna login. Request
+yang masih diproses dipulihkan setelah halaman dimuat ulang dalam tab yang sama.
+Indikator berpikir ditampilkan sekurang-kurangnya
 sekitar 5 detik, sedangkan request yang belum selesai setelah 90 detik dihentikan
 dengan pesan kesalahan agar antarmuka tidak menggantung tanpa batas.
 
@@ -191,7 +218,22 @@ Contoh fallback di luar konteks:
 .\backend\.venv\Scripts\python.exe backend\scripts\print_chat_cli_examples.py --case out_of_scope --static
 ```
 
+Evaluasi guardrail per kategori (hasil JSON dapat dipakai untuk tabel skripsi):
+
+```powershell
+.\backend\.venv\Scripts\python.exe backend\scripts\evaluate_guardrails.py --output docs\guardrail_results.json
+```
+
+Laporan memisahkan support, precision, recall, dan F1 untuk setiap kategori;
+angka rata-rata tidak digunakan sebagai pengganti rincian kategori. Script
+menolak laporan final jika dataset kurang dari 100 kasus. Dataset bawaan hanya
+contoh smoke test; jalankan dengan `--minimum-cases 1` untuk memeriksa mekanisme,
+lalu perluas dan validasi labelnya bersama pembina sebelum dipakai dalam skripsi.
+
 ## Publikasi
+
+Panduan deployment manual gratis dengan Cloudflare Pages, Oracle Cloud, Neon,
+Caddy, Docker Compose, dan timer retensi tersedia di `deploy/README.md`.
 
 Repo ini sudah terhubung ke remote GitHub. Untuk publish perubahan public saat ini:
 

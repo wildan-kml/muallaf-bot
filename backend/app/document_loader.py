@@ -44,7 +44,14 @@ def _extract_with_pdfplumber(pdf_path: Path) -> list[PageText]:
     return pages
 
 
-def load_pdf_pages(raw_pdfs_dir: Path) -> list[PageText]:
+def load_pdf_pages(raw_pdfs_dir: Path, *, strict: bool = True) -> list[PageText]:
+    """Extract every PDF or fail the entire ingestion transaction.
+
+    A partially built knowledge base is dangerous for a religious-information
+    assistant because missing material is not visible to users.  In strict mode
+    (the default), one unreadable or empty PDF aborts the build and preserves the
+    previously published index.
+    """
     if not raw_pdfs_dir.exists():
         return []
 
@@ -56,19 +63,27 @@ def load_pdf_pages(raw_pdfs_dir: Path) -> list[PageText]:
     pages: list[PageText] = []
     errors: list[str] = []
     for pdf_path in pdf_paths:
+        extracted: list[PageText] = []
+        extractor_errors: list[str] = []
         try:
-            pages.extend(_extract_with_pymupdf(pdf_path))
-            continue
+            extracted = _extract_with_pymupdf(pdf_path)
         except Exception as exc:
-            errors.append(f"{pdf_path.name}: PyMuPDF failed: {exc}")
+            extractor_errors.append(f"PyMuPDF failed: {exc}")
 
-        try:
-            pages.extend(_extract_with_pdfplumber(pdf_path))
-        except Exception as exc:
-            errors.append(f"{pdf_path.name}: pdfplumber failed: {exc}")
+        if not extracted:
+            try:
+                extracted = _extract_with_pdfplumber(pdf_path)
+            except Exception as exc:
+                extractor_errors.append(f"pdfplumber failed: {exc}")
 
-    if errors and not pages:
+        if not extracted:
+            detail = "; ".join(extractor_errors) or "tidak ada teks yang dapat diekstrak"
+            errors.append(f"{pdf_path.name}: {detail}")
+        else:
+            pages.extend(extracted)
+
+    if errors and (strict or not pages):
         joined = "; ".join(errors)
-        raise RuntimeError(f"No PDF text could be extracted. {joined}")
+        raise RuntimeError(f"Knowledge base build dibatalkan karena ekstraksi PDF tidak lengkap. {joined}")
 
     return pages

@@ -8,6 +8,9 @@ import {
   CircleCheck,
   Heart,
   MessageSquareText,
+  LogOut,
+  LockKeyhole,
+  Plus,
   RefreshCw,
   Send,
   ShieldCheck,
@@ -18,10 +21,21 @@ import {
 } from 'lucide-react';
 import SourceList from './components/SourceList.jsx';
 import DocumentViewer from './components/DocumentViewer.jsx';
-import { sendChatQuestion, sendFeedback } from './services/chatApi.js';
+import {
+  createSession,
+  deleteSession,
+  getCurrentAccount,
+  getPrivacyNotice,
+  getSessionMessages,
+  listSessions,
+  loginAccount,
+  registerAccount,
+  sendChatQuestion,
+  sendFeedback,
+} from './services/chatApi.js';
 
-const CHAT_HISTORY_KEY = 'imc-mask-public-chat-history-v2';
 const PENDING_REQUEST_KEY = 'imc-mask-public-pending-request-v1';
+const AUTH_SESSION_KEY = 'muallaf-bot-auth-v1';
 const COPYRIGHT_TEXT = '\u00A9 2026 Copyright by Muhammad Wildan Kamil, Afrida Helen, Mira Suryani.';
 const MINIMUM_RESPONSE_DELAY_MS = 5000;
 const REQUEST_TIMEOUT_MS = 90000;
@@ -113,6 +127,18 @@ function createMessage(role, text, extras = {}) {
     createdAt: createdAt.toISOString(),
     sources: [],
     ...extras,
+  };
+}
+
+function fromStoredMessage(message) {
+  const createdAt = new Date(message.created_at);
+  return {
+    id: message.id,
+    role: message.role,
+    text: message.content,
+    time: nowTime(createdAt),
+    createdAt: message.created_at,
+    sources: Array.isArray(message.metadata?.sources) ? message.metadata.sources : [],
   };
 }
 
@@ -268,19 +294,15 @@ function BotMessage({ message, onSuggestion, onIntroduce, onOpenSource, disabled
   );
 }
 
-function BotPage() {
+function BotPage({ auth, onLogout }) {
   const [sidebarQuestions, setSidebarQuestions] = useState(() => pickRandomQuestions(6));
   const [viewerSource, setViewerSource] = useState(viewerSourceFromLocation);
   const [openingQuestions, setOpeningQuestions] = useState(() => pickRandomQuestions(3).map((item) => item.text));
   const [sidebarOpen, setSidebarOpen] = useState(() => !window.matchMedia('(max-width: 940px)').matches);
-  const [messages, setMessages] = useState(() => {
-    try {
-      const parsed = JSON.parse(localStorage.getItem(CHAT_HISTORY_KEY) || '[]');
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  });
+  const [messages, setMessages] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [currentSessionId, setCurrentSessionId] = useState(null);
+  const [historyStatus, setHistoryStatus] = useState('Memuat riwayat...');
   const [question, setQuestion] = useState('');
   const [enteringUserMessageId, setEnteringUserMessageId] = useState(null);
   const [isThinking, setIsThinking] = useState(() => Boolean(readPendingRequest()));
@@ -316,9 +338,41 @@ function BotPage() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(messages));
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadHistory() {
+      try {
+        const result = await listSessions(auth.token);
+        let nextSessions = result.sessions || [];
+        let selected = nextSessions[0];
+        if (!selected) {
+          selected = await createSession(auth.token);
+          nextSessions = [selected];
+        }
+        if (!active) return;
+        setSessions(nextSessions);
+        setCurrentSessionId(selected.id);
+        const stored = await getSessionMessages(auth.token, selected.id);
+        if (!active) return;
+        const restored = (stored.messages || []).map(fromStoredMessage);
+        setMessages(restored);
+        if (restored.length) {
+          setShowIntroduction(false);
+          setIsOpeningIntroPending(false);
+          setIsOpeningPromptPending(false);
+        }
+        setHistoryStatus('');
+      } catch (error) {
+        if (error?.status === 401) onLogout();
+        else setHistoryStatus(error?.message || 'Riwayat belum dapat dimuat.');
+      }
+    }
+    loadHistory();
+    return () => { active = false; };
+  }, [auth.token]);
 
   useEffect(() => {
     const compactViewport = window.matchMedia('(max-width: 940px)');
@@ -374,6 +428,63 @@ function BotPage() {
     [messages],
   );
 
+  async function openSession(sessionId) {
+    if (!sessionId || sessionId === currentSessionId || conversationBusy) return;
+    setHistoryStatus('Memuat percakapan...');
+    try {
+      const stored = await getSessionMessages(auth.token, sessionId);
+      setCurrentSessionId(sessionId);
+      setMessages((stored.messages || []).map(fromStoredMessage));
+      setIsOpeningIntroPending(false);
+      setIsOpeningPromptPending(false);
+      setShowIntroduction(false);
+      setHistoryStatus('');
+      if (window.matchMedia('(max-width: 940px)').matches) setSidebarOpen(false);
+    } catch (error) {
+      setHistoryStatus(error?.message || 'Percakapan belum dapat dimuat.');
+    }
+  }
+
+  async function startNewSession() {
+    if (conversationBusy) return;
+    try {
+      const session = await createSession(auth.token);
+      setSessions((current) => [session, ...current]);
+      setCurrentSessionId(session.id);
+      setMessages([]);
+      setQuestion('');
+      setOpeningQuestions(pickRandomQuestions(3).map((item) => item.text));
+      setIsOpeningIntroPending(false);
+      setIsOpeningPromptPending(true);
+      setHistoryStatus('');
+    } catch (error) {
+      setHistoryStatus(error?.message || 'Percakapan baru belum dapat dibuat.');
+    }
+  }
+
+  async function deleteCurrentConversation() {
+    if (!currentSessionId || conversationBusy) return;
+    if (!window.confirm('Hapus percakapan ini secara permanen?')) return;
+    setHistoryStatus('Menghapus percakapan...');
+    try {
+      await deleteSession(auth.token, currentSessionId);
+      const result = await listSessions(auth.token);
+      let nextSessions = result.sessions || [];
+      let selected = nextSessions[0];
+      if (!selected) {
+        selected = await createSession(auth.token);
+        nextSessions = [selected];
+      }
+      const stored = await getSessionMessages(auth.token, selected.id);
+      setSessions(nextSessions);
+      setCurrentSessionId(selected.id);
+      setMessages((stored.messages || []).map(fromStoredMessage));
+      setHistoryStatus('');
+    } catch (error) {
+      setHistoryStatus(error?.message || 'Percakapan belum dapat dihapus.');
+    }
+  }
+
   async function submitQuestion(text = question) {
     const trimmed = text.trim();
     if (!trimmed || requestInFlightRef.current || isThinking || isOpeningIntroPending || isOpeningPromptPending || isResetting) return;
@@ -386,9 +497,9 @@ function BotPage() {
       question: trimmed,
       history: apiHistory.map(({ role, text: historyText }) => ({ role, text: historyText })),
       startedAt: Date.now(),
+      sessionId: currentSessionId,
     };
 
-    localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(nextMessages));
     localStorage.setItem(PENDING_REQUEST_KEY, JSON.stringify(pendingRequest));
     setMessages(nextMessages);
     setEnteringUserMessageId(userMessage.id);
@@ -413,12 +524,20 @@ function BotPage() {
       const responsePromise = sendChatQuestion(
         pendingRequest.question,
         pendingRequest.history,
-        { signal: controller.signal },
+        {
+          signal: controller.signal,
+          token: auth.token,
+          sessionId: pendingRequest.sessionId || currentSessionId,
+        },
       );
       const minimumDelay = wait(MINIMUM_RESPONSE_DELAY_MS - elapsed);
       const response = await responsePromise;
       await minimumDelay;
       if (readPendingRequest()?.id !== pendingRequest.id) return;
+
+      if (response.session_id && response.session_id !== currentSessionId) {
+        setCurrentSessionId(response.session_id);
+      }
 
       setMessages((current) => [
         ...current,
@@ -426,6 +545,7 @@ function BotPage() {
           sources: response.mode === 'fallback' ? [] : response.sources,
         }),
       ]);
+      listSessions(auth.token).then((result) => setSessions(result.sessions || [])).catch(() => {});
     } catch (error) {
       if (readPendingRequest()?.id !== pendingRequest.id) return;
       const timedOut = error?.name === 'AbortError';
@@ -494,8 +614,16 @@ function BotPage() {
     setIsResetting(true);
     activeRequestControllerRef.current?.abort();
     const nextOpeningQuestions = pickRandomQuestions(3).map((item) => item.text);
-    localStorage.removeItem(CHAT_HISTORY_KEY);
     localStorage.removeItem(PENDING_REQUEST_KEY);
+    try {
+      const session = await createSession(auth.token);
+      setSessions((current) => [session, ...current]);
+      setCurrentSessionId(session.id);
+    } catch (error) {
+      setHistoryStatus(error?.message || 'Percakapan baru belum dapat dibuat.');
+      setIsResetting(false);
+      return;
+    }
     setOpeningQuestions(nextOpeningQuestions);
     setSidebarQuestions(pickRandomQuestions(6));
     setQuestion('');
@@ -587,6 +715,35 @@ function BotPage() {
         </button>
 
         <aside className="question-sidebar" aria-hidden={!sidebarOpen}>
+          <div className="account-panel">
+            <div>
+              <strong>{auth.user.display_name}</strong>
+              <span>@{auth.user.username}</span>
+            </div>
+            <button type="button" onClick={onLogout} aria-label="Keluar dari akun" title="Keluar">
+              <LogOut size={18} />
+            </button>
+          </div>
+          <button className="new-session-button" type="button" onClick={startNewSession} disabled={conversationBusy}>
+            <Plus size={18} /> Percakapan baru
+          </button>
+          <div className="session-history" aria-label="Riwayat percakapan">
+            <h3>Riwayat percakapan</h3>
+            {historyStatus && <p className="history-status">{historyStatus}</p>}
+            {sessions.map((session) => (
+              <button
+                key={session.id}
+                type="button"
+                className={session.id === currentSessionId ? 'is-active' : ''}
+                onClick={() => openSession(session.id)}
+                disabled={conversationBusy}
+                title={session.title}
+              >
+                <MessageSquareText size={16} />
+                <span>{session.title}</span>
+              </button>
+            ))}
+          </div>
           <div className="sidebar-heading">
             <h2>Pertanyaan umum mualaf</h2>
             <button
@@ -695,6 +852,17 @@ function BotPage() {
               >
                 <Trash2 size={15} />
                 <span>{isResetting ? 'Mengulang...' : 'Ulangi chat'}</span>
+              </button>
+              <button
+                className="reset-chat-button"
+                type="button"
+                onClick={deleteCurrentConversation}
+                disabled={conversationBusy || !currentSessionId}
+                aria-label="Hapus percakapan aktif"
+                title="Hapus percakapan aktif secara permanen"
+              >
+                <Trash2 size={15} />
+                <span>Hapus sesi</span>
               </button>
               <p className="copyright">{COPYRIGHT_TEXT}</p>
               <button
@@ -828,6 +996,123 @@ function BotPage() {
   );
 }
 
+function AuthScreen({ onAuthenticated }) {
+  const [mode, setMode] = useState('login');
+  const [form, setForm] = useState({ username: '', displayName: '', password: '', privacyAccepted: false });
+  const [status, setStatus] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [privacy, setPrivacy] = useState(null);
+
+  async function submit(event) {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setStatus('');
+    try {
+      const result = mode === 'login'
+        ? await loginAccount(form.username.trim(), form.password)
+        : await registerAccount(form);
+      onAuthenticated({ token: result.access_token, user: result.user });
+    } catch (error) {
+      setStatus(error?.message || 'Akun belum dapat diproses.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function showPrivacy() {
+    try {
+      setPrivacy(await getPrivacyNotice());
+    } catch {
+      setPrivacy({
+        summary: 'Riwayat percakapan disimpan agar sesi dapat dipulihkan dan dihapus otomatis sesuai masa retensi.',
+        retention_days: 30,
+        warning: 'Jangan kirimkan informasi pribadi yang tidak diperlukan.',
+      });
+    }
+  }
+
+  return (
+    <main className="auth-page">
+      <section className="auth-card">
+        <span className="auth-icon"><LockKeyhole size={28} /></span>
+        <h1>Muallaf Bot</h1>
+        <p>Masuk untuk melanjutkan percakapan dengan riwayat yang tersimpan aman.</p>
+        <div className="auth-tabs" role="tablist">
+          <button type="button" className={mode === 'login' ? 'is-active' : ''} onClick={() => { setMode('login'); setStatus(''); }}>Masuk</button>
+          <button type="button" className={mode === 'register' ? 'is-active' : ''} onClick={() => { setMode('register'); setStatus(''); }}>Daftar</button>
+        </div>
+        <form className="auth-form" onSubmit={submit}>
+          {mode === 'register' && (
+            <label>Nama tampilan
+              <input required minLength={2} maxLength={120} autoComplete="name" value={form.displayName} onChange={(event) => setForm((current) => ({ ...current, displayName: event.target.value }))} />
+            </label>
+          )}
+          <label>Nama pengguna
+            <input required minLength={3} maxLength={100} autoComplete="username" pattern="[a-zA-Z0-9_.-]+" value={form.username} onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))} />
+          </label>
+          <label>Kata sandi
+            <input required minLength={mode === 'register' ? 10 : 1} maxLength={128} type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} />
+          </label>
+          {mode === 'register' && (
+            <label className="privacy-consent">
+              <input required type="checkbox" checked={form.privacyAccepted} onChange={(event) => setForm((current) => ({ ...current, privacyAccepted: event.target.checked }))} />
+              <span>Saya memahami dan menyetujui <button type="button" onClick={showPrivacy}>pemberitahuan privasi</button>.</span>
+            </label>
+          )}
+          {mode === 'login' && <button className="privacy-link" type="button" onClick={showPrivacy}>Baca privasi dan masa penyimpanan data</button>}
+          {status && <p className="auth-status" role="alert">{status}</p>}
+          <button className="auth-submit" type="submit" disabled={busy}>{busy ? 'Memproses...' : mode === 'login' ? 'Masuk' : 'Buat akun'}</button>
+        </form>
+      </section>
+      {privacy && (
+        <div className="privacy-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPrivacy(null); }}>
+          <section className="privacy-dialog" role="dialog" aria-modal="true" aria-labelledby="privacy-title">
+            <button className="introduction-close" type="button" onClick={() => setPrivacy(null)} aria-label="Tutup"><X size={19} /></button>
+            <ShieldCheck size={34} />
+            <h2 id="privacy-title">Privasi Muallaf Bot</h2>
+            <p>{privacy.summary}</p>
+            <p><strong>Masa simpan:</strong> {privacy.retention_days} hari sejak aktivitas terakhir.</p>
+            <p>{privacy.warning}</p>
+            <button className="introduction-start" type="button" onClick={() => setPrivacy(null)}>Saya mengerti</button>
+          </section>
+        </div>
+      )}
+    </main>
+  );
+}
+
 export default function App() {
-  return <BotPage />;
+  const [auth, setAuth] = useState(() => {
+    try {
+      return JSON.parse(sessionStorage.getItem(AUTH_SESSION_KEY) || 'null');
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    if (!auth?.token) return;
+    getCurrentAccount(auth.token)
+      .then((result) => setAuth((current) => current ? { ...current, user: result.user } : current))
+      .catch(() => {
+        sessionStorage.removeItem(AUTH_SESSION_KEY);
+        setAuth(null);
+      });
+  }, [auth?.token]);
+
+  function authenticated(value) {
+    sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(value));
+    setAuth(value);
+  }
+
+  function logout() {
+    localStorage.removeItem(PENDING_REQUEST_KEY);
+    sessionStorage.removeItem(AUTH_SESSION_KEY);
+    setAuth(null);
+  }
+
+  return auth?.token
+    ? <BotPage auth={auth} onLogout={logout} />
+    : <AuthScreen onAuthenticated={authenticated} />;
 }

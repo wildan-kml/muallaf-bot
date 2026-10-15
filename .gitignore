@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .venv/
+.venv*/
 venv/
 
 # Node / Vite
@@ -25,6 +26,7 @@ logs/
 *.out.log
 *.err.log
 *.pid
+muallaf-bot-frontend-cloudflare.zip
 
 # Private thesis and evaluation artifacts
 *.xlsx
@@ -32,11 +34,13 @@ logs/
 *.ipynb
 docs/ragas_results*.csv
 docs/ragas_raw_responses*.jsonl
+docs/guardrail_results*.json
 
 # Source documents are public; generated vector data is rebuilt locally for now.
 backend/data/processed/*.json
 backend/data/vector_db/*
 backend/data/feedback/
+backend/data/*.db
 !backend/data/raw_pdfs/.gitkeep
 !backend/data/processed/.gitkeep
 !backend/data/vector_db/.gitkeep

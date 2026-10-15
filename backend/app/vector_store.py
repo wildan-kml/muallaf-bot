@@ -496,9 +496,15 @@ def build_vector_index(chunks: list[TextChunk], settings: Settings) -> dict[str,
             encoding="utf-8",
         )
         summary["embeddings_built"] = True
+        if settings.vector_db_type == "pgvector":
+            _replace_pgvector_index(chunks, embeddings, settings)
+            summary["pgvector_built"] = True
     except Exception as exc:
         logger.warning("Failed to build embeddings; retrieval will use lexical fallback.", exc_info=True)
         summary["embedding_error"] = str(exc)
+        if settings.vector_db_type == "pgvector":
+            summary["pgvector_built"] = False
+            summary["pgvector_error"] = str(exc)
 
     if settings.vector_db_type == "faiss":
         try:
@@ -511,6 +517,57 @@ def build_vector_index(chunks: list[TextChunk], settings: Settings) -> dict[str,
             summary["faiss_error"] = str(exc)
 
     return summary
+
+
+def _vector_literal(values) -> str:
+    return "[" + ",".join(f"{float(value):.9g}" for value in values) + "]"
+
+
+def _replace_pgvector_index(chunks: list[TextChunk], embeddings, settings: Settings) -> None:
+    """Replace the external vector index in one PostgreSQL transaction."""
+    if not settings.database_url.startswith(("postgres://", "postgresql://")):
+        raise RuntimeError("VECTOR_DB_TYPE=pgvector memerlukan DATABASE_URL PostgreSQL")
+    import psycopg
+
+    dimension = int(embeddings.shape[1])
+    with psycopg.connect(settings.database_url) as connection:
+        connection.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        connection.execute(
+            f"""CREATE TABLE IF NOT EXISTS knowledge_chunks (
+                chunk_id VARCHAR(180) PRIMARY KEY,
+                content TEXT NOT NULL,
+                document_title TEXT NOT NULL,
+                page_number INTEGER NOT NULL,
+                file_name TEXT NOT NULL,
+                embedding vector({dimension}) NOT NULL
+            )"""
+        )
+        existing_dimension = connection.execute(
+            """SELECT atttypmod
+               FROM pg_attribute
+               WHERE attrelid = 'knowledge_chunks'::regclass AND attname = 'embedding'"""
+        ).fetchone()
+        if existing_dimension and int(existing_dimension[0]) not in {-1, dimension}:
+            raise RuntimeError("Dimensi pgvector berbeda; hapus tabel knowledge_chunks sebelum mengganti model embedding")
+        connection.execute("DELETE FROM knowledge_chunks")
+        rows = [
+            (
+                chunk.chunk_id,
+                chunk.content,
+                chunk.document_title,
+                chunk.page_number,
+                chunk.file_name,
+                _vector_literal(embedding),
+            )
+            for chunk, embedding in zip(chunks, embeddings, strict=True)
+        ]
+        with connection.cursor() as cursor:
+            cursor.executemany(
+                """INSERT INTO knowledge_chunks
+                   (chunk_id, content, document_title, page_number, file_name, embedding)
+                   VALUES (%s, %s, %s, %s, %s, %s::vector)""",
+                rows,
+            )
 
 
 def _faiss_index_dir(settings: Settings):
@@ -685,7 +742,6 @@ class FaissVectorStore(LocalVectorStore):
     def retrieve(self, question: str, top_k: int) -> list[RetrievalResult]:
         if self._faiss is None:
             return super().retrieve(question, top_k)
-
         expanded_question = _expanded_question(question)
         try:
             candidate_count = min(len(self.chunks), max(top_k * 10, top_k))
@@ -719,6 +775,104 @@ class FaissVectorStore(LocalVectorStore):
             return super().retrieve(question, top_k)
 
 
+class PgVectorStore(LocalVectorStore):
+    """Neon/PostgreSQL pgvector retriever with a safe local fallback."""
+
+    def __init__(self, settings: Settings):
+        super().__init__(settings)
+        self._load_remote_chunks()
+
+    def _load_remote_chunks(self) -> None:
+        """Hydrate chunk metadata from PostgreSQL when local build files are absent.
+
+        Cloud Run has an ephemeral filesystem. The knowledge-base build runs as
+        a Cloud Run Job and stores the durable index in Neon, so service
+        instances must be able to start without generated JSON files baked into
+        the container.
+        """
+        if not self.settings.database_url.startswith(("postgres://", "postgresql://")):
+            return
+        try:
+            import psycopg
+            from psycopg.rows import dict_row
+
+            with psycopg.connect(self.settings.database_url, row_factory=dict_row) as connection:
+                rows = connection.execute(
+                    """SELECT chunk_id, content, document_title, page_number, file_name
+                       FROM knowledge_chunks ORDER BY file_name, page_number, chunk_id"""
+                ).fetchall()
+            if rows:
+                self.chunks = [
+                    TextChunk(
+                        chunk_id=row["chunk_id"],
+                        content=row["content"],
+                        document_title=row["document_title"],
+                        page_number=int(row["page_number"]),
+                        file_name=row["file_name"],
+                    )
+                    for row in rows
+                ]
+        except Exception:
+            logger.warning(
+                "Could not load pgvector chunk metadata; local fallback remains active.",
+                exc_info=True,
+            )
+
+    @property
+    def embedding_status(self) -> str:
+        return "pgvector_ready" if self.chunks else "pgvector_not_built"
+
+    def retrieve(self, question: str, top_k: int) -> list[RetrievalResult]:
+        if not self.settings.database_url.startswith(("postgres://", "postgresql://")):
+            logger.warning("pgvector selected without PostgreSQL; using local retrieval.")
+            return super().retrieve(question, top_k)
+        try:
+            import psycopg
+            from psycopg.rows import dict_row
+
+            model = _get_embedding_model(self.settings.embedding_model)
+            query_embedding = model.encode(
+                [f"query: {_expanded_question(question)}"],
+                convert_to_numpy=True,
+                show_progress_bar=False,
+            )
+            query_vector = _vector_literal(_normalize_matrix(query_embedding)[0])
+            with psycopg.connect(self.settings.database_url, row_factory=dict_row) as connection:
+                rows = connection.execute(
+                    """SELECT chunk_id, content, document_title, page_number, file_name,
+                              1 - (embedding <=> %s::vector) AS score
+                       FROM knowledge_chunks
+                       ORDER BY embedding <=> %s::vector
+                       LIMIT %s""",
+                    (query_vector, query_vector, max(top_k * 4, top_k)),
+                ).fetchall()
+            results = []
+            for row in rows:
+                chunk = TextChunk(
+                    chunk_id=row["chunk_id"],
+                    content=row["content"],
+                    document_title=row["document_title"],
+                    page_number=int(row["page_number"]),
+                    file_name=row["file_name"],
+                )
+                semantic_score = float(row["score"] or 0.0)
+                combined = min(
+                    1.0,
+                    max(
+                        0.0,
+                        (semantic_score * 0.72)
+                        + (_lexical_score(question, chunk.content) * 0.28)
+                        + _priority_bonus(question, chunk),
+                    ),
+                )
+                results.append(RetrievalResult(chunk=chunk, score=combined))
+            results.sort(key=lambda item: item.score, reverse=True)
+            return results[:top_k]
+        except Exception:
+            logger.warning("pgvector retrieval failed; using local retrieval.", exc_info=True)
+            return super().retrieve(question, top_k)
+
+
 class LangChainVectorStoreRetriever:
     """Small LangChain retriever adapter around the active vector store."""
 
@@ -748,4 +902,6 @@ class LangChainVectorStoreRetriever:
 def make_vector_store(settings: Settings) -> LocalVectorStore:
     if settings.vector_db_type == "faiss":
         return FaissVectorStore(settings)
+    if settings.vector_db_type == "pgvector":
+        return PgVectorStore(settings)
     return LocalVectorStore(settings)
