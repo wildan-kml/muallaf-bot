@@ -9,7 +9,6 @@ import {
   Heart,
   MessageSquareText,
   LogOut,
-  LockKeyhole,
   Plus,
   RefreshCw,
   Send,
@@ -1035,7 +1034,7 @@ function AuthScreen({ onAuthenticated }) {
   return (
     <main className="auth-page">
       <section className="auth-card">
-        <span className="auth-icon"><LockKeyhole size={28} /></span>
+        <img className="auth-logo" src="/imc-mask-logo.jpg" alt="Logo International Muallaf Center Masjid Agung Sunda Kelapa" />
         <h1>Muallaf Bot</h1>
         <p>Masuk untuk melanjutkan percakapan dengan riwayat yang tersimpan aman.</p>
         <div className="auth-tabs" role="tablist">
@@ -1057,10 +1056,9 @@ function AuthScreen({ onAuthenticated }) {
           {mode === 'register' && (
             <label className="privacy-consent">
               <input required type="checkbox" checked={form.privacyAccepted} onChange={(event) => setForm((current) => ({ ...current, privacyAccepted: event.target.checked }))} />
-              <span>Saya memahami dan menyetujui <button type="button" onClick={showPrivacy}>pemberitahuan privasi</button>.</span>
+              <span>Saya telah membaca dan menyetujui <button type="button" onClick={showPrivacy}>ketentuan privasi</button>.</span>
             </label>
           )}
-          {mode === 'login' && <button className="privacy-link" type="button" onClick={showPrivacy}>Baca privasi dan masa penyimpanan data</button>}
           {status && <p className="auth-status" role="alert">{status}</p>}
           <button className="auth-submit" type="submit" disabled={busy}>{busy ? 'Memproses...' : mode === 'login' ? 'Masuk' : 'Buat akun'}</button>
         </form>
@@ -1069,12 +1067,90 @@ function AuthScreen({ onAuthenticated }) {
         <div className="privacy-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPrivacy(null); }}>
           <section className="privacy-dialog" role="dialog" aria-modal="true" aria-labelledby="privacy-title">
             <button className="introduction-close" type="button" onClick={() => setPrivacy(null)} aria-label="Tutup"><X size={19} /></button>
-            <ShieldCheck size={34} />
-            <h2 id="privacy-title">Privasi Muallaf Bot</h2>
-            <p>{privacy.summary}</p>
-            <p><strong>Masa simpan:</strong> {privacy.retention_days} hari sejak aktivitas terakhir.</p>
-            <p>{privacy.warning}</p>
-            <button className="introduction-start" type="button" onClick={() => setPrivacy(null)}>Saya mengerti</button>
+            <header className="privacy-heading">
+              <span className="privacy-eyebrow">Pemberitahuan sebelum pendaftaran</span>
+              <h2 id="privacy-title">Ketentuan Privasi dan Pengelolaan Data Muallaf Bot</h2>
+              <p>
+                Ketentuan ini menjelaskan bagaimana data pengguna dikelola dalam Muallaf Bot, sebuah sistem pendamping informasi awal bagi calon mualaf dan mualaf yang dikembangkan dalam konteks penelitian. Bacalah seluruh bagian sebelum membuat akun.
+              </p>
+            </header>
+
+            <div className="privacy-content">
+              <section>
+                <h3>1. Ruang lingkup dan tujuan layanan</h3>
+                <p>
+                  Muallaf Bot menggunakan pendekatan <strong>Retrieval-Augmented Generation (RAG)</strong> untuk mencari informasi dari dokumen rujukan yang telah disiapkan. Layanan ini bertujuan membantu pengguna memperoleh penjelasan awal, menjaga kesinambungan percakapan, dan memudahkan pengguna kembali ke sesi sebelumnya.
+                </p>
+                <p>
+                  Jawaban chatbot bersifat <strong>informasi dan pendampingan awal</strong>. Jawaban tidak menggantikan bimbingan langsung dari pembina mualaf, ustaz, konselor, tenaga kesehatan, atau pihak berwenang ketika persoalan memerlukan penanganan khusus.
+                </p>
+              </section>
+
+              <section>
+                <h3>2. Data yang dikumpulkan</h3>
+                <p>Ketika pengguna mendaftar dan menggunakan layanan, sistem dapat menyimpan:</p>
+                <ul>
+                  <li><strong>Data akun</strong>, yaitu nama tampilan, nama pengguna, dan kata sandi yang telah diubah menjadi hash kriptografis.</li>
+                  <li><strong>Data percakapan</strong>, yaitu judul sesi, pertanyaan, jawaban chatbot, sumber rujukan, serta waktu aktivitas.</li>
+                  <li><strong>Data persetujuan</strong>, yaitu catatan bahwa pengguna telah menyetujui ketentuan privasi saat pendaftaran.</li>
+                  <li><strong>Data umpan balik opsional</strong>, termasuk identitas atau alamat surel hanya apabila pengguna memilih untuk mengisinya.</li>
+                </ul>
+                <p>
+                  Sistem tidak meminta nomor identitas, data pembayaran, atau kata sandi layanan lain. Pengguna diminta untuk <strong>tidak memasukkan data pribadi sensitif</strong> yang tidak diperlukan ke dalam percakapan.
+                </p>
+              </section>
+
+              <section>
+                <h3>3. Tujuan penggunaan data</h3>
+                <ul>
+                  <li>Membuat dan mengautentikasi akun pengguna secara aman.</li>
+                  <li>Menyimpan sesi agar percakapan dapat dilanjutkan tanpa mengulangi pertanyaan dari awal.</li>
+                  <li>Menghasilkan jawaban berbasis dokumen dan menampilkan sumber yang relevan.</li>
+                  <li>Menjaga keamanan, mengevaluasi kinerja sistem, serta memperbaiki kualitas layanan dan penelitian.</li>
+                </ul>
+              </section>
+
+              <section>
+                <h3>4. Pemrosesan oleh sistem kecerdasan buatan</h3>
+                <p>
+                  Pertanyaan diproses melalui pencarian basis pengetahuan dan dapat diteruskan kepada <strong>penyedia model kecerdasan buatan yang dikonfigurasi</strong> untuk menyusun jawaban. Jika model tersebut tidak tersedia, sistem menggunakan jawaban ekstraktif dari dokumen. Karena teknologi AI dapat menghasilkan kekeliruan, pengguna tetap dianjurkan memeriksa sumber dan berkonsultasi dengan pembina untuk keputusan penting.
+                </p>
+              </section>
+
+              <section>
+                <h3>5. Penyimpanan, keamanan, dan masa retensi</h3>
+                <p>
+                  Data akun dan percakapan disimpan pada basis data aplikasi dengan pengendalian akses. Kata sandi <strong>tidak disimpan dalam bentuk teks asli</strong>, sedangkan akses ke histori memerlukan autentikasi akun.
+                </p>
+                <p>
+                  Riwayat percakapan memiliki masa retensi <strong>{privacy.retention_days || 30} hari sejak aktivitas terakhir</strong>. Data yang telah melewati masa tersebut memenuhi syarat untuk dihapus dalam proses pemeriksaan berkala. Pengguna juga dapat menghapus sesi percakapan lebih awal melalui kontrol yang tersedia pada aplikasi.
+                </p>
+              </section>
+
+              <section>
+                <h3>6. Kendali dan hak pengguna</h3>
+                <ul>
+                  <li>Melihat kembali sesi dan riwayat percakapan miliknya.</li>
+                  <li>Menghapus sesi yang tidak lagi ingin disimpan.</li>
+                  <li>Keluar dari akun untuk mengakhiri sesi pada perangkat yang digunakan.</li>
+                  <li>Menyampaikan permintaan koreksi atau penghapusan data melalui saluran umpan balik kepada pengelola.</li>
+                </ul>
+              </section>
+
+              <section>
+                <h3>7. Tanggung jawab dan persetujuan pengguna</h3>
+                <p>
+                  Pengguna bertanggung jawab menjaga kerahasiaan kata sandi serta memastikan informasi yang dikirim memang diperlukan. Dengan mencentang kotak persetujuan dan membuat akun, pengguna menyatakan telah membaca, memahami, dan menyetujui pemrosesan data sebagaimana dijelaskan dalam ketentuan ini.
+                </p>
+                <p className="privacy-warning">
+                  <strong>Penting:</strong> jangan mengirimkan kata sandi, nomor identitas, informasi pembayaran, rekam medis, atau data pribadi pihak lain melalui percakapan chatbot.
+                </p>
+              </section>
+            </div>
+
+            <div className="privacy-actions">
+              <button className="introduction-start" type="button" onClick={() => setPrivacy(null)}>Saya sudah membaca</button>
+            </div>
           </section>
         </div>
       )}
