@@ -1,4 +1,7 @@
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const configuredApiUrl = import.meta.env.VITE_API_URL;
+export const API_BASE_URL = configuredApiUrl !== undefined
+  ? configuredApiUrl.replace(/\/$/, '')
+  : import.meta.env.DEV ? 'http://127.0.0.1:8000' : '';
 
 function toApiHistory(messages) {
   if (!Array.isArray(messages)) return [];
@@ -44,6 +47,21 @@ async function apiRequest(path, { token, headers = {}, ...options } = {}) {
     throw error;
   }
   return data;
+}
+
+export function getSecurityConfig() {
+  return apiRequest('/api/security/config');
+}
+
+export function getHumanVerificationStatus() {
+  return apiRequest('/api/security/status');
+}
+
+export function verifyHuman(token) {
+  return apiRequest('/api/security/verify', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  });
 }
 
 export function loginAccount(username, password) {

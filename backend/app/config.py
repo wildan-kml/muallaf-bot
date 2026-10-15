@@ -76,6 +76,13 @@ class Settings:
     feedback_subject: str
     feedback_rate_limit_seconds: int
     trust_proxy_headers: bool
+    origin_shared_secret: str
+    max_request_body_bytes: int
+    guest_chat_rate_per_minute: int
+    user_chat_rate_per_minute: int
+    global_chat_rate_per_minute: int
+    login_rate_per_ten_minutes: int
+    registration_rate_per_hour: int
     database_url: str
     jwt_secret: str
     access_token_minutes: int
@@ -124,7 +131,7 @@ def get_settings() -> Settings:
         embedding_model=os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-small"),
         llm_provider=os.getenv("LLM_PROVIDER", "gemini").strip().lower(),
         gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
-        gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+        gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
         ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
         ollama_model=os.getenv("OLLAMA_MODEL", "llama3.1:8b"),
         top_k=_get_int("TOP_K", 4),
@@ -141,6 +148,13 @@ def get_settings() -> Settings:
         feedback_subject=os.getenv("FEEDBACK_SUBJECT", "Feedback Muallaf Bot").strip(),
         feedback_rate_limit_seconds=max(60, _get_int("FEEDBACK_RATE_LIMIT_SECONDS", 900)),
         trust_proxy_headers=os.getenv("TRUST_PROXY_HEADERS", "false").strip().lower() in {"1", "true", "yes"},
+        origin_shared_secret=os.getenv("ORIGIN_SHARED_SECRET", "").strip(),
+        max_request_body_bytes=max(4096, _get_int("MAX_REQUEST_BODY_BYTES", 65536)),
+        guest_chat_rate_per_minute=max(1, _get_int("GUEST_CHAT_RATE_PER_MINUTE", 6)),
+        user_chat_rate_per_minute=max(1, _get_int("USER_CHAT_RATE_PER_MINUTE", 15)),
+        global_chat_rate_per_minute=max(1, _get_int("GLOBAL_CHAT_RATE_PER_MINUTE", 30)),
+        login_rate_per_ten_minutes=max(1, _get_int("LOGIN_RATE_PER_TEN_MINUTES", 10)),
+        registration_rate_per_hour=max(1, _get_int("REGISTRATION_RATE_PER_HOUR", 3)),
         database_url=database_url,
         jwt_secret=os.getenv("JWT_SECRET", "change-this-development-secret").strip(),
         access_token_minutes=max(15, _get_int("ACCESS_TOKEN_MINUTES", 480)),

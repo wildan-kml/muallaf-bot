@@ -21,11 +21,14 @@ import {
 } from 'lucide-react';
 import SourceList from './components/SourceList.jsx';
 import DocumentViewer from './components/DocumentViewer.jsx';
+import TurnstileVerification from './components/TurnstileVerification.jsx';
 import {
   createSession,
   deleteSession,
   getCurrentAccount,
+  getHumanVerificationStatus,
   getPrivacyNotice,
+  getSecurityConfig,
   getSessionMessages,
   listSessions,
   loginAccount,
@@ -33,6 +36,7 @@ import {
   sendChatQuestion,
   sendFeedback,
   updateAccount,
+  verifyHuman,
 } from './services/chatApi.js';
 
 const PENDING_REQUEST_KEY = 'imc-mask-public-pending-request-v1';
@@ -363,6 +367,7 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
   const [isResetNoticeClosing, setIsResetNoticeClosing] = useState(false);
   const [currentDateKey, setCurrentDateKey] = useState(() => localDateKey());
   const listRef = useRef(null);
+  const restoreLatestChatRef = useRef(false);
   const activeRequestControllerRef = useRef(null);
   const resumedRequestRef = useRef(false);
   const requestInFlightRef = useRef(Boolean(readPendingRequest()));
@@ -375,6 +380,15 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
     window.addEventListener('popstate', syncViewerWithHistory);
     return () => window.removeEventListener('popstate', syncViewerWithHistory);
   }, []);
+
+  useEffect(() => {
+    if (viewerSource || !restoreLatestChatRef.current) return undefined;
+    restoreLatestChatRef.current = false;
+    const frame = window.requestAnimationFrame(() => {
+      listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'auto' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [viewerSource]);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
@@ -652,6 +666,7 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
   }
 
   function openDocumentViewer(source) {
+    restoreLatestChatRef.current = true;
     const nextViewer = {
       fileName: source.file_name,
       title: source.document_title || 'Dokumen rujukan',
@@ -668,6 +683,7 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
   }
 
   function closeDocumentViewer() {
+    restoreLatestChatRef.current = true;
     if (window.history.state?.muallafBotViewer) {
       window.history.back();
       return;
@@ -977,9 +993,9 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
             <button className="introduction-close" type="button" onClick={() => setShowAccountSettings(false)} aria-label="Tutup pengaturan akun"><X size={19} /></button>
             <span className="privacy-eyebrow">Akun @{auth.user.username}</span>
             <h2 id="account-settings-title">Pengaturan akun</h2>
-            <p>Nama pengguna tidak dapat diubah. Anda dapat memperbarui nama tampilan atau mengganti kata sandi.</p>
+            <p>Nama pengguna tidak dapat diubah. Anda dapat memperbarui nama lengkap atau mengganti kata sandi.</p>
             <form className="account-settings-form" onSubmit={submitAccountSettings}>
-              <label>Nama tampilan
+              <label>Nama lengkap
                 <input required minLength={2} maxLength={120} autoComplete="name" placeholder="Contoh: Muhammad Wildan" value={accountForm.displayName} onChange={(event) => setAccountForm((current) => ({ ...current, displayName: event.target.value }))} />
               </label>
               <div className="account-password-section">
@@ -1120,10 +1136,56 @@ function AuthScreen({ onAuthenticated, onContinueAsGuest }) {
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
   const [privacy, setPrivacy] = useState(null);
+  const [security, setSecurity] = useState({ ready: false, enabled: false, siteKey: null });
+  const [humanVerified, setHumanVerified] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([getSecurityConfig(), getHumanVerificationStatus()])
+      .then(([config, verification]) => {
+        if (!active) return;
+        const enabled = Boolean(config?.enabled && config?.site_key);
+        setSecurity({ ready: true, enabled, siteKey: config?.site_key || null });
+        setHumanVerified(!enabled || Boolean(verification?.verified));
+      })
+      .catch(() => {
+        if (!active) return;
+        if (import.meta.env.DEV) {
+          setSecurity({ ready: true, enabled: false, siteKey: null });
+          setHumanVerified(true);
+        } else {
+          setSecurity({ ready: true, enabled: true, siteKey: null });
+          setHumanVerified(false);
+          setStatus('Konfigurasi keamanan belum dapat dimuat. Silakan muat ulang halaman.');
+        }
+      });
+    return () => { active = false; };
+  }, []);
+
+  const handleTurnstileToken = React.useCallback(async (token) => {
+    setStatus('Memeriksa keamanan...');
+    try {
+      await verifyHuman(token);
+      setHumanVerified(true);
+      setStatus('');
+    } catch (error) {
+      setHumanVerified(false);
+      setStatus(error?.message || 'Verifikasi keamanan gagal. Silakan coba kembali.');
+    }
+  }, []);
+
+  const handleTurnstileError = React.useCallback((message) => {
+    setHumanVerified(false);
+    setStatus(message);
+  }, []);
 
   async function submit(event) {
     event.preventDefault();
     if (busy) return;
+    if (mode === 'register' && security.enabled && !humanVerified) {
+      setStatus('Selesaikan verifikasi keamanan sebelum membuat akun.');
+      return;
+    }
     setBusy(true);
     setStatus('');
     try {
@@ -1186,15 +1248,14 @@ function AuthScreen({ onAuthenticated, onContinueAsGuest }) {
       <section className="auth-card">
         <img className="auth-logo" src="/imc-mask-logo.jpg" alt="Logo International Muallaf Center Masjid Agung Sunda Kelapa" />
         <h1>Muallaf Bot</h1>
-        <p>{mode === 'login' ? 'Masuk untuk melanjutkan percakapan dengan riwayat yang tersimpan aman.' : 'Buat akun tanpa email untuk menyimpan riwayat percakapan secara aman.'}</p>
         <div className={`auth-tabs is-${mode}`} role="tablist">
           <button type="button" className={mode === 'login' ? 'is-active' : ''} onClick={() => { setMode('login'); setStatus(''); }}>Masuk</button>
           <button type="button" className={mode === 'register' ? 'is-active' : ''} onClick={() => { setMode('register'); setStatus(''); }}>Daftar</button>
         </div>
         <form key={mode} className={`auth-form is-${mode}`} onSubmit={submit}>
           {mode === 'register' && (
-            <label>Nama tampilan
-              <input required minLength={2} maxLength={120} autoComplete="name" placeholder="Contoh: Muhammad Wildan" value={form.displayName} onInvalid={(event) => setAuthValidationMessage(event, 'Nama tampilan', 2)} onInput={clearValidationMessage} onChange={(event) => setForm((current) => ({ ...current, displayName: event.target.value }))} />
+            <label>Nama lengkap
+              <input required minLength={2} maxLength={120} autoComplete="name" placeholder="Contoh: Muhammad Wildan" value={form.displayName} onInvalid={(event) => setAuthValidationMessage(event, 'Nama lengkap', 2)} onInput={clearValidationMessage} onChange={(event) => setForm((current) => ({ ...current, displayName: event.target.value }))} />
             </label>
           )}
           <label>Nama pengguna
@@ -1210,13 +1271,19 @@ function AuthScreen({ onAuthenticated, onContinueAsGuest }) {
               <span>Saya telah membaca dan menyetujui <button type="button" onClick={showPrivacy}>ketentuan privasi</button>.</span>
             </label>
           )}
+          {mode === 'register' && security.enabled && !humanVerified && (
+            <TurnstileVerification siteKey={security.siteKey} onToken={handleTurnstileToken} onError={handleTurnstileError} />
+          )}
           {status && <p className="auth-status" role="alert">{status}</p>}
-          <button className="auth-submit" type="submit" disabled={busy}>{busy ? 'Memproses...' : mode === 'login' ? 'Masuk' : 'Buat akun'}</button>
+          <button className="auth-submit" type="submit" disabled={busy || !security.ready || (mode === 'register' && security.enabled && !humanVerified)}>{busy ? 'Memproses...' : mode === 'login' ? 'Masuk' : 'Buat akun'}</button>
         </form>
         <div className="guest-access">
           <span>atau</span>
-          <button type="button" onClick={onContinueAsGuest}>Lanjut sebagai tamu</button>
-          <p>Tanpa akun. Percakapan tersimpan sementara di tab ini dan dihapus setelah satu jam.</p>
+          {mode === 'login' && security.enabled && !humanVerified && (
+            <TurnstileVerification siteKey={security.siteKey} onToken={handleTurnstileToken} onError={handleTurnstileError} />
+          )}
+          <button type="button" disabled={!security.ready || (security.enabled && !humanVerified)} onClick={onContinueAsGuest}>Lanjut sebagai tamu</button>
+          <p>Chat dihapus dalam 1 jam</p>
         </div>
       </section>
       {privacy && (
@@ -1246,9 +1313,10 @@ function AuthScreen({ onAuthenticated, onContinueAsGuest }) {
                 <h3>2. Data yang dikumpulkan</h3>
                 <p>Ketika pengguna mendaftar dan menggunakan layanan, sistem dapat menyimpan:</p>
                 <ul>
-                  <li><strong>Data akun</strong>, yaitu nama tampilan, nama pengguna, dan kata sandi yang telah diubah menjadi hash kriptografis.</li>
+                  <li><strong>Data akun</strong>, yaitu nama lengkap, nama pengguna, dan kata sandi yang telah diubah menjadi hash kriptografis.</li>
                   <li><strong>Data percakapan</strong>, yaitu judul sesi, pertanyaan, jawaban chatbot, sumber rujukan, serta waktu aktivitas.</li>
                   <li><strong>Data persetujuan</strong>, yaitu catatan bahwa pengguna telah menyetujui ketentuan privasi saat pendaftaran.</li>
+                  <li><strong>Data teknis keamanan sementara</strong>, seperti alamat jaringan, token Turnstile, dan cookie keamanan satu jam yang diproses untuk membatasi spam, serangan otomatis, dan penggunaan layanan secara berlebihan.</li>
                   <li><strong>Data umpan balik opsional</strong>, termasuk identitas atau alamat surel hanya apabila pengguna memilih untuk mengisinya.</li>
                 </ul>
                 <p>
@@ -1283,6 +1351,9 @@ function AuthScreen({ onAuthenticated, onContinueAsGuest }) {
                 </p>
                 <p>
                   Pada <strong>mode tamu</strong>, isi percakapan tidak dibuatkan sesi di basis data aplikasi. Salinan sementara hanya disimpan pada tab browser yang digunakan dan dihapus ketika pengguna keluar atau setelah satu jam.
+                </p>
+                <p>
+                  Layanan melibatkan <strong>Cloudflare</strong> untuk hosting, rate limit, dan verifikasi Turnstile; <strong>Modal</strong> untuk menjalankan API; <strong>Neon</strong> untuk basis data; serta penyedia model bahasa yang dikonfigurasi. Akses antarlayanan dilindungi dengan kredensial rahasia dan dibatasi untuk kebutuhan operasional.
                 </p>
               </section>
 

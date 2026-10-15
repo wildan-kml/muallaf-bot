@@ -159,7 +159,7 @@ a:focus-visible {
 
 .auth-card h1 { margin: 0; color: var(--green-900); text-align: center; }
 .auth-card > p { margin: 10px 0 24px; color: var(--muted); text-align: center; line-height: 1.5; }
-.auth-tabs { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 5px; overflow: hidden; border-radius: 11px; background: var(--soft); }
+.auth-tabs { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 24px; padding: 5px; overflow: hidden; border-radius: 11px; background: var(--soft); }
 .auth-tabs::before {
   position: absolute;
   top: 5px;
@@ -185,6 +185,7 @@ a:focus-visible {
   border-radius: 9px;
   background: var(--white);
   color: var(--ink);
+  font-weight: 400;
   caret-color: var(--green-800);
   transition: border-color 180ms ease, box-shadow 180ms ease;
 }
@@ -194,7 +195,7 @@ a:focus-visible {
   box-shadow: 0 0 0 3px rgba(8, 120, 69, 0.12), 0 0 18px rgba(8, 120, 69, 0.2);
 }
 .auth-form input::placeholder,
-.account-settings-form input::placeholder { color: #87948e; opacity: 1; }
+.account-settings-form input::placeholder { color: #87948e; font-weight: 400; opacity: 1; }
 .auth-form input:-webkit-autofill {
   -webkit-text-fill-color: var(--ink);
   box-shadow: 0 0 0 1000px var(--white) inset;
@@ -203,15 +204,46 @@ a:focus-visible {
 .privacy-consent input { width: 17px; height: 17px; margin: 2px 0 0; accent-color: var(--green-800); }
 .privacy-consent button { padding: 0; border: 0; background: transparent; color: var(--green-700); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
 .auth-status { margin: 0; padding: 10px 12px; border-radius: 8px; background: #fff0f0; color: #922; font-size: 13px; text-align: left; }
-.auth-submit { padding: 12px 18px; border: 0; border-radius: 9px; background: var(--green-800); color: white; font-weight: 750; }
+.auth-submit {
+  padding: 12px 18px;
+  border: 0;
+  border-radius: 9px;
+  background: linear-gradient(180deg, #087844 0%, #004421 100%);
+  color: white;
+  font-weight: 750;
+  box-shadow: 0 8px 18px rgba(0, 68, 33, 0.18);
+  transition: filter 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+.auth-submit:hover:not(:disabled) {
+  filter: brightness(1.16);
+  box-shadow: 0 10px 24px rgba(0, 92, 46, 0.3), 0 0 18px rgba(18, 164, 91, 0.24);
+  transform: translateY(-1px);
+}
 .auth-submit:disabled { cursor: wait; opacity: .65; }
 .guest-access { display: grid; justify-items: center; gap: 9px; margin-top: 20px; text-align: center; }
 .guest-access > span { display: flex; align-items: center; width: 100%; gap: 10px; color: var(--muted); font-size: 12px; }
 .guest-access > span::before,
 .guest-access > span::after { height: 1px; flex: 1; background: var(--line); content: ''; }
-.guest-access button { width: 100%; padding: 11px 16px; border: 1px solid var(--green-700); border-radius: 9px; background: white; color: var(--green-800); font-weight: 750; transition: background 180ms ease, color 180ms ease, transform 180ms ease; }
-.guest-access button:hover { background: var(--soft); transform: translateY(-1px); }
+.guest-access button {
+  width: 100%;
+  padding: 11px 16px;
+  border: 1px solid var(--green-700);
+  border-radius: 9px;
+  background: linear-gradient(180deg, #087844 0%, #004421 100%);
+  color: white;
+  font-weight: 750;
+  box-shadow: 0 8px 18px rgba(0, 68, 33, 0.16);
+  transition: filter 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+.guest-access button:hover {
+  filter: brightness(1.16);
+  box-shadow: 0 10px 24px rgba(0, 92, 46, 0.3), 0 0 18px rgba(18, 164, 91, 0.24);
+  transform: translateY(-1px);
+}
 .guest-access p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.turnstile-verification { width: 100%; min-height: 65px; overflow: hidden; border-radius: 9px; }
+.auth-submit:disabled,
+.guest-access button:disabled { cursor: not-allowed; filter: grayscale(.25); opacity: .62; transform: none; }
 
 @keyframes auth-form-enter {
   from { opacity: 0; transform: translateY(7px); }
@@ -866,9 +898,9 @@ a:focus-visible {
   min-height: 0;
   margin-inline: auto;
   overflow: hidden;
-  border: 1px solid var(--line);
+  border: 1px solid var(--green-800);
   border-radius: 16px;
-  background: var(--white);
+  background: linear-gradient(180deg, #087844 0%, #004421 100%);
   box-shadow: 0 18px 45px rgba(0, 45, 26, 0.08);
 }
 
@@ -879,7 +911,8 @@ a:focus-visible {
   align-items: center;
   min-width: 0;
   padding: 14px 18px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.28);
+  background: linear-gradient(180deg, #087844 0%, #004421 100%);
 }
 
 .viewer-back-button,
@@ -890,7 +923,7 @@ a:focus-visible {
   gap: 8px;
   min-height: 40px;
   padding: 8px 13px;
-  border: 1px solid var(--line);
+  border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: 8px;
   background: var(--white);
   color: var(--green-800);
@@ -901,8 +934,8 @@ a:focus-visible {
 
 .viewer-back-button:hover,
 .viewer-actions a:hover {
-  border-color: var(--green-700);
-  box-shadow: 0 0 18px rgba(8, 120, 69, 0.28);
+  border-color: var(--white);
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.62);
   transform: translateY(-1px);
 }
 
@@ -912,7 +945,7 @@ a:focus-visible {
   justify-content: center;
   gap: 10px;
   min-width: 0;
-  color: var(--green-900);
+  color: var(--white);
   text-align: center;
 }
 
@@ -931,7 +964,7 @@ a:focus-visible {
 
 .viewer-document-heading p {
   margin: 3px 0 0;
-  color: var(--muted);
+  color: rgba(255, 255, 255, 0.82);
   font-size: 11px;
 }
 
@@ -946,7 +979,7 @@ a:focus-visible {
   min-width: 0;
   min-height: 0;
   padding: 10px;
-  background: var(--soft);
+  background: linear-gradient(180deg, #087844 0%, #004421 100%);
   overflow: auto;
   overscroll-behavior: contain;
 }
@@ -964,13 +997,13 @@ a:focus-visible {
 
 .document-frame-fallback {
   margin: 8px 0 0;
-  color: var(--muted);
+  color: rgba(255, 255, 255, 0.82);
   font-size: 11px;
   text-align: center;
 }
 
 .document-frame-fallback a {
-  color: var(--green-800);
+  color: var(--white);
   font-weight: 750;
 }
 

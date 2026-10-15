@@ -1,7 +1,8 @@
 # Runtime dependencies used by the Cloud Run + Neon deployment.
 # Optional local-only stacks (Ollama, FAISS, and langchain-community) are
 # intentionally excluded to keep the container and Artifact Registry cost down.
-fastapi==0.115.6
+fastapi==0.143.1
+starlette==1.6.0
 uvicorn[standard]==0.34.0
 pydantic>=2.7.0
 python-dotenv>=1.0.1

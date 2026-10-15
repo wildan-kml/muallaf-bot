@@ -16,6 +16,29 @@ from .vector_store import LangChainVectorStoreRetriever
 logger = logging.getLogger(__name__)
 
 
+def _response_text(response: Any) -> str | None:
+    content = getattr(response, "content", response)
+    if isinstance(content, str):
+        return content.strip() or None
+
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+                continue
+            if isinstance(block, dict):
+                text = block.get("text")
+            else:
+                text = getattr(block, "text", None)
+            if isinstance(text, str) and text.strip():
+                parts.append(text.strip())
+        combined = "\n".join(parts).strip()
+        return combined or None
+
+    return str(content).strip() or None
+
+
 class LangChainRagPipeline(RagPipeline):
     """Optional LangChain-backed answer generator.
 
@@ -123,8 +146,7 @@ class LangChainRagPipeline(RagPipeline):
                 "history": _format_chat_history(history),
             }
         )
-        text = getattr(response, "content", response)
-        return str(text).strip() or None
+        return _response_text(response)
 
     def _langchain_ready(self) -> bool:
         try:
@@ -202,6 +224,9 @@ Jawaban:
                 model=self.settings.gemini_model,
                 google_api_key=self.settings.gemini_api_key,
                 temperature=0.2,
+                timeout=45,
+                max_retries=1,
+                max_output_tokens=500,
             )
 
         if provider == "ollama":
@@ -211,6 +236,10 @@ Jawaban:
                 model=self.settings.ollama_model,
                 base_url=self.settings.ollama_base_url,
                 temperature=0.2,
+                num_ctx=2048,
+                num_predict=220,
+                client_kwargs={"timeout": 55.0},
+                async_client_kwargs={"timeout": 55.0},
             )
 
         if provider == "auto":

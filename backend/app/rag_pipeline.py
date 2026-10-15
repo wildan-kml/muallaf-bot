@@ -449,6 +449,42 @@ NON_SUBSTANTIVE_INPUTS = {
 }
 
 
+CONVERSATIONAL_ABBREVIATIONS = {
+    "syp": "siapa",
+    "gw": "saya",
+    "gue": "saya",
+    "km": "kamu",
+    "kmu": "kamu",
+    "lu": "kamu",
+    "lo": "kamu",
+    "tdk": "tidak",
+    "gk": "tidak",
+    "ga": "tidak",
+    "gak": "tidak",
+    "nggak": "tidak",
+    "gmw": "tidak mau",
+    "gnw": "tidak mau",
+    "mw": "mau",
+    "sm": "sama",
+    "ngobrl": "ngobrol",
+    "ngerti": "mengerti",
+    "mksd": "maksud",
+    "sy": "saya",
+    "ustad": "ustadz",
+    "ustdz": "ustadz",
+    "aj": "saja",
+    "aja": "saja",
+    "yg": "yang",
+    "dgn": "dengan",
+    "utk": "untuk",
+    "bljr": "belajar",
+    "gmn": "bagaimana",
+    "knp": "kenapa",
+    "krn": "karena",
+    "tp": "tapi",
+}
+
+
 MUALAF_CONTEXT_TERMS = {
     "mualaf",
     "muallaf",
@@ -632,7 +668,14 @@ PROMPT_INJECTION_HINTS = {
 def normalize_user_query(text: str) -> str:
     cleaned = re.sub(r"\s+", " ", str(text or "").strip())
     key = re.sub(r"\s+", "", cleaned.lower().strip(" .?!,;:"))
-    return FUSED_QUERY_NORMALIZATIONS.get(key, cleaned)
+    fused = FUSED_QUERY_NORMALIZATIONS.get(key)
+    if fused:
+        return fused
+    return re.sub(
+        r"\b[a-zA-Z]+\b",
+        lambda match: CONVERSATIONAL_ABBREVIATIONS.get(match.group(0).lower(), match.group(0)),
+        cleaned,
+    )
 
 
 def _has_resolving_history(question: str, history: list[ChatMessage] | None = None) -> bool:
@@ -671,6 +714,98 @@ def _non_substantive_response() -> ChatResponse:
         next_actions=["Tulis pertanyaan"],
         model_status="needs_question",
         escalation="non_substantive_input",
+    )
+
+
+def _normalize_conversational_input(question: str) -> str:
+    cleaned = _normalize_text(question).lower().strip(" .?!,;:")
+    tokens = re.findall(r"[a-z0-9]+", cleaned)
+    return " ".join(CONVERSATIONAL_ABBREVIATIONS.get(token, token) for token in tokens)
+
+
+def _conversational_meta_category(question: str) -> str | None:
+    cleaned = _normalize_conversational_input(question)
+    if cleaned in {"siapa kamu", "kamu siapa", "siapa anda", "anda siapa"}:
+        return "bot_identity"
+
+    subjects = ("kamu", "anda")
+    misunderstanding_phrases = (
+        "tidak mengerti maksud saya",
+        "tidak memahami maksud saya",
+        "belum mengerti maksud saya",
+        "belum memahami maksud saya",
+    )
+    if cleaned.startswith(subjects) and any(phrase in cleaned for phrase in misunderstanding_phrases):
+        return "conversation_clarification"
+
+    human_targets = ("ustadz", "pembina", "orang", "manusia", "petugas")
+    human_request_phrases = (
+        "mau sama ustadz",
+        "mau sama pembina",
+        "mau bicara dengan",
+        "mau ngobrol dengan",
+        "ingin bicara dengan",
+        "ingin ngobrol dengan",
+    )
+    rejects_bot = any(
+        phrase in cleaned
+        for phrase in (
+            "tidak mau ngobrol sama kamu",
+            "tidak mau bicara sama kamu",
+            "tidak mau ngobrol dengan kamu",
+            "tidak mau bicara dengan kamu",
+        )
+    )
+    requests_human = (
+        any(target in cleaned for target in human_targets)
+        and any(phrase in cleaned for phrase in human_request_phrases)
+    )
+    if requests_human or (rejects_bot and any(target in cleaned for target in human_targets)):
+        return "human_handoff"
+    return None
+
+
+def _conversational_meta_response(category: str) -> ChatResponse:
+    if category == "bot_identity":
+        answer = (
+            "Saya Muallaf Bot, asisten informasi awal tentang proses menjadi muslim, "
+            "syahadat, ibadah dasar, pembinaan mualaf, dan layanan IMC-MASK."
+        )
+        return ChatResponse(
+            answer=answer,
+            reply=answer,
+            mode="direct",
+            next_actions=["Ajukan pertanyaan"],
+            model_status="direct:bot_identity",
+        )
+
+    if category == "human_handoff":
+        answer = (
+            "Baik. Saya tidak akan memaksakan percakapan. Jika Anda ingin berbicara "
+            "langsung dengan ustadz atau pembina, silakan hubungi pembina atau "
+            "sekretariat IMC-MASK melalui kanal resmi yang tersedia."
+        )
+        return ChatResponse(
+            answer=answer,
+            reply=answer,
+            mode="fallback",
+            next_actions=["Hubungi pembina", "Hubungi sekretariat IMC-MASK"],
+            model_status="direct:human_handoff",
+            escalation="human_handoff_requested",
+        )
+
+    answer = (
+        "Maaf jika jawaban saya belum sesuai dengan maksud Anda. Silakan jelaskan "
+        "kembali pertanyaan atau topik yang dimaksud dengan sedikit lebih rinci agar "
+        "saya tidak membuat asumsi yang keliru."
+    )
+    return ChatResponse(
+        answer=answer,
+        reply=answer,
+        mode="fallback",
+        next_actions=["Perjelas pertanyaan"],
+        model_status="needs_clarification",
+        escalation="conversation_clarification",
     )
 
 
@@ -2462,6 +2597,10 @@ class RagPipeline:
 
         if _is_non_substantive_input(question):
             return _non_substantive_response()
+
+        conversational_meta_category = _conversational_meta_category(question)
+        if conversational_meta_category:
+            return _conversational_meta_response(conversational_meta_category)
 
         if is_ambiguous_or_incomplete_query(question, history):
             return _clarification_response(question)

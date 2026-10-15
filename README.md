@@ -163,6 +163,13 @@ Indikator berpikir ditampilkan sekurang-kurangnya
 sekitar 5 detik, sedangkan request yang belum selesai setelah 90 detik dihentikan
 dengan pesan kesalahan agar antarmuka tidak menggantung tanpa batas.
 
+## Pengamanan Produksi
+
+Deployment produksi wajib menggunakan Cloudflare Worker sebagai gateway,
+Turnstile, Modal Proxy Auth, origin secret, dan rate limit berlapis. Ikuti
+prosedur pada [`docs/SECURITY_DEPLOYMENT.md`](docs/SECURITY_DEPLOYMENT.md)
+sebelum push atau deploy perubahan keamanan.
+
 Tombol `Kirim Feedback` membuka formulir bawaan. Identitas bersifat opsional,
 sedangkan email dan isi feedback wajib diisi. Feedback dikirim ke
 `mwildankamil@gmail.com` dengan subjek `Feedback Muallaf Bot`, lalu disimpan

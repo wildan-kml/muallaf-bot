@@ -4,6 +4,7 @@ import json
 import smtplib
 import threading
 import time
+import hashlib
 from ipaddress import ip_address
 from datetime import datetime, timezone
 from email.message import EmailMessage
@@ -40,6 +41,7 @@ from .schemas import (
     RegisterRequest,
     SessionCreateRequest,
 )
+from .security import ApiSecurityMiddleware, SlidingWindowRateLimiter
 
 
 settings = get_settings()
@@ -47,6 +49,7 @@ database = Database(settings.database_url, settings.chat_retention_days)
 logger = logging.getLogger(__name__)
 _feedback_attempts: dict[str, float] = {}
 _feedback_rate_limit_lock = threading.Lock()
+_request_limiter = SlidingWindowRateLimiter()
 
 for directory in (settings.raw_pdfs_dir, settings.processed_dir, settings.vector_db_dir):
     directory.mkdir(parents=True, exist_ok=True)
@@ -55,14 +58,23 @@ app = FastAPI(
     title="IMC-MASK API",
     version="0.3.0",
     description="API IMC-MASK untuk chatbot Muallaf Bot berbasis RAG.",
+    docs_url=None if settings.environment == "production" else "/docs",
+    redoc_url=None if settings.environment == "production" else "/redoc",
+    openapi_url=None if settings.environment == "production" else "/openapi.json",
 )
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Origin-Verify", "X-Muallaf-Client-IP"],
+)
+app.add_middleware(
+    ApiSecurityMiddleware,
+    environment=settings.environment,
+    origin_secret=settings.origin_shared_secret,
+    max_body_bytes=settings.max_request_body_bytes,
 )
 
 app.mount(
@@ -80,8 +92,11 @@ def warmup_rag_pipeline() -> None:
     lazily. Running a tiny retrieval during startup moves that cost to backend
     boot time, so the first visible chatbot response is faster.
     """
-    if settings.environment == "production" and settings.jwt_secret == "change-this-development-secret":
-        raise RuntimeError("JWT_SECRET wajib diganti sebelum deployment produksi.")
+    if settings.environment == "production":
+        if settings.jwt_secret == "change-this-development-secret" or len(settings.jwt_secret) < 32:
+            raise RuntimeError("JWT_SECRET produksi wajib acak dan minimal 32 karakter.")
+        if len(settings.origin_shared_secret) < 32:
+            raise RuntimeError("ORIGIN_SHARED_SECRET produksi wajib acak dan minimal 32 karakter.")
     database.initialize()
     database.purge_expired()
     try:
@@ -126,9 +141,10 @@ def privacy_notice() -> dict[str, Any]:
             "Percakapan tamu tidak dibuatkan sesi di database dan hanya bertahan satu jam di tab browser."
         ),
         "retention_days": settings.chat_retention_days,
-        "data_collected": ["nama tampilan", "nama pengguna", "riwayat percakapan", "feedback opsional"],
+        "data_collected": ["nama lengkap", "nama pengguna", "riwayat percakapan", "data teknis keamanan sementara", "feedback opsional"],
         "not_collected": ["alamat email untuk login", "password asli", "nomor identitas", "data pembayaran"],
-        "user_controls": ["mengubah nama tampilan", "mengganti kata sandi", "menghapus sesi", "keluar dari akun"],
+        "user_controls": ["mengubah nama lengkap", "mengganti kata sandi", "menghapus sesi", "keluar dari akun"],
+        "security_processing": "Cloudflare memproses token Turnstile, alamat jaringan, dan cookie keamanan berdurasi satu jam untuk mencegah spam dan penyalahgunaan.",
         "warning": "Jangan kirimkan kata sandi, nomor identitas, atau informasi pribadi yang tidak diperlukan.",
     }
 
@@ -142,8 +158,32 @@ def _public_user(user: dict[str, Any] | AuthenticatedUser) -> dict[str, str]:
     }
 
 
+def _client_key(request: Request) -> str:
+    if settings.environment == "production":
+        forwarded = request.headers.get("x-muallaf-client-ip", "").strip()
+        if forwarded:
+            try:
+                return str(ip_address(forwarded))
+            except ValueError:
+                pass
+    return request.client.host if request.client else "unknown"
+
+
+def _authorization_key(request: Request) -> str | None:
+    authorization = request.headers.get("authorization", "").strip()
+    if not authorization:
+        return None
+    return hashlib.sha256(authorization.encode("utf-8")).hexdigest()
+
+
 @app.post("/api/auth/register", response_model=LoginResponse, status_code=201)
-def register(request: RegisterRequest) -> LoginResponse:
+def register(request: RegisterRequest, http_request: Request) -> LoginResponse:
+    _request_limiter.claim(
+        f"register:{_client_key(http_request)}",
+        settings.registration_rate_per_hour,
+        3600,
+        "Terlalu banyak percobaan pendaftaran. Coba lagi nanti.",
+    )
     if not settings.allow_registration:
         raise HTTPException(status_code=403, detail="Pendaftaran akun baru sedang ditutup")
     if not request.privacy_accepted:
@@ -167,7 +207,13 @@ def register(request: RegisterRequest) -> LoginResponse:
 
 
 @app.post("/api/auth/login", response_model=LoginResponse)
-def login(request: LoginRequest) -> LoginResponse:
+def login(request: LoginRequest, http_request: Request) -> LoginResponse:
+    _request_limiter.claim(
+        f"login:{_client_key(http_request)}:{request.username.strip().lower()}",
+        settings.login_rate_per_ten_minutes,
+        600,
+        "Terlalu banyak percobaan masuk. Coba lagi beberapa menit.",
+    )
     user = database.get_user_by_username(request.username.strip().lower())
     if not user or not verify_password(request.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Nama pengguna atau kata sandi salah")
@@ -310,11 +356,25 @@ def debug_runtime(user: AuthenticatedUser = Depends(get_current_user)) -> dict[s
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(
     request: ChatRequest,
+    http_request: Request,
     user: AuthenticatedUser | None = Depends(get_optional_user),
 ) -> ChatResponse:
     question = request.prompt
     if not question:
         raise HTTPException(status_code=422, detail="question atau message wajib diisi")
+    _request_limiter.claim(
+        "chat:global",
+        settings.global_chat_rate_per_minute,
+        60,
+        "Layanan sedang menerima terlalu banyak pertanyaan. Coba lagi sebentar.",
+    )
+    requester = _authorization_key(http_request) if user is not None else _client_key(http_request)
+    _request_limiter.claim(
+        f"chat:{'user' if user else 'guest'}:{requester}",
+        settings.user_chat_rate_per_minute if user else settings.guest_chat_rate_per_minute,
+        60,
+        "Batas pertanyaan per menit telah tercapai. Silakan tunggu sebentar.",
+    )
     if user is None:
         if request.session_id:
             raise HTTPException(status_code=400, detail="Sesi tersimpan hanya tersedia setelah login")

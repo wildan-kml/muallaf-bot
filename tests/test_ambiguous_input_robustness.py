@@ -86,6 +86,72 @@ def make_pipeline(top_k: int = 4) -> tuple[RagPipeline, FakeVectorStore]:
 
 
 class RobustnessAndGuardrailHardeningTests(unittest.TestCase):
+    def test_daily_slang_human_handoff_does_not_enter_retrieval(self) -> None:
+        pipeline, vector_store = make_pipeline()
+
+        response = pipeline.answer("gw gmw ngobrl sm lo, mw sm ustdz aj")
+
+        self.assertEqual(response.mode, "fallback")
+        self.assertEqual(response.model_status, "direct:human_handoff")
+        self.assertEqual(response.escalation, "human_handoff_requested")
+        self.assertIn("ustadz atau pembina", response.answer.lower())
+        self.assertEqual(response.sources, [])
+        self.assertEqual(vector_store.queries, [])
+
+    def test_daily_slang_is_normalized_for_regular_rag_question(self) -> None:
+        pipeline, vector_store = make_pipeline()
+
+        response = pipeline.answer("gw mw bljr wudhu")
+
+        self.assertNotEqual(response.escalation, "human_handoff_requested")
+        self.assertTrue(vector_store.queries)
+        query, _ = vector_store.queries[0]
+        self.assertIn("saya mau belajar wudhu", query.lower())
+
+    def test_educational_ustadz_question_is_not_treated_as_handoff(self) -> None:
+        pipeline, vector_store = make_pipeline()
+
+        response = pipeline.answer("Apa tugas ustadz dalam pembinaan mualaf?")
+
+        self.assertNotEqual(response.escalation, "human_handoff_requested")
+        self.assertTrue(vector_store.queries)
+
+    def test_abbreviated_bot_identity_question_is_answered_without_retrieval(self) -> None:
+        pipeline, vector_store = make_pipeline()
+
+        response = pipeline.answer("syp km")
+
+        self.assertEqual(response.mode, "direct")
+        self.assertEqual(response.model_status, "direct:bot_identity")
+        self.assertIn("muallaf bot", response.answer.lower())
+        self.assertEqual(response.sources, [])
+        self.assertEqual(vector_store.queries, [])
+
+    def test_abbreviated_misunderstanding_complaint_requests_clarification(self) -> None:
+        pipeline, vector_store = make_pipeline()
+
+        response = pipeline.answer("km tdk mengerti mksd sy?")
+
+        self.assertEqual(response.mode, "fallback")
+        self.assertEqual(response.model_status, "needs_clarification")
+        self.assertEqual(response.escalation, "conversation_clarification")
+        self.assertIn("jelaskan kembali", response.answer.lower())
+        self.assertEqual(response.sources, [])
+        self.assertEqual(vector_store.queries, [])
+
+    def test_normal_siapa_and_maksud_questions_still_use_rag(self) -> None:
+        questions = [
+            "Siapa yang berhak menerima zakat?",
+            "Apa maksud dua kalimat syahadat?",
+        ]
+
+        for question in questions:
+            with self.subTest(question=question):
+                pipeline, vector_store = make_pipeline()
+                response = pipeline.answer(question)
+                self.assertNotEqual(response.escalation, "conversation_clarification")
+                self.assertTrue(vector_store.queries)
+
     def test_non_substantive_check_does_not_enter_retrieval(self) -> None:
         pipeline, vector_store = make_pipeline()
 

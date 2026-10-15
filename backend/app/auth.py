@@ -72,14 +72,22 @@ def create_access_token(user_id: str, username: str, secret: str, minutes: int) 
 
 def decode_access_token(token: str, secret: str) -> dict[str, Any]:
     try:
+        if len(token) > 4096:
+            raise ValueError("token too large")
         header, payload, signature = token.split(".", 2)
+        decoded_header = json.loads(_b64_decode(header))
+        if decoded_header != {"alg": "HS256", "typ": "JWT"}:
+            raise ValueError("unsupported header")
         expected = _b64_encode(hmac.new(secret.encode(), f"{header}.{payload}".encode(), hashlib.sha256).digest())
         if not hmac.compare_digest(signature, expected):
             raise ValueError("invalid signature")
         claims = json.loads(_b64_decode(payload))
-        if int(claims.get("exp", 0)) <= int(datetime.now(timezone.utc).timestamp()):
+        now = int(datetime.now(timezone.utc).timestamp())
+        if int(claims.get("exp", 0)) <= now:
             raise ValueError("expired")
-        if not claims.get("sub"):
+        if int(claims.get("iat", now + 1)) > now + 60:
+            raise ValueError("issued in future")
+        if not isinstance(claims.get("sub"), str) or not claims["sub"]:
             raise ValueError("missing subject")
         return claims
     except (ValueError, TypeError, json.JSONDecodeError) as exc:

@@ -2,8 +2,32 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "muallaf-bot",
   "compatibility_date": "2026-10-15",
+  "main": "./src/worker.js",
+  "vars": {
+    "API_ORIGIN": "https://wildan-kml--muallaf-bot-api.us-east.modal.run",
+    "FRONTEND_HOST": "muallaf-bot.mwildankamil.workers.dev"
+  },
+  "ratelimits": [
+    {
+      "name": "GLOBAL_RATE_LIMITER",
+      "namespace_id": "260101",
+      "simple": { "limit": 120, "period": 60 }
+    },
+    {
+      "name": "CHAT_RATE_LIMITER",
+      "namespace_id": "260102",
+      "simple": { "limit": 10, "period": 60 }
+    },
+    {
+      "name": "AUTH_RATE_LIMITER",
+      "namespace_id": "260103",
+      "simple": { "limit": 5, "period": 60 }
+    }
+  ],
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    "binding": "ASSETS",
+    "run_worker_first": ["/", "/index.html", "/api/*"]
   }
 }

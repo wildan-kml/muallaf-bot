@@ -95,14 +95,14 @@ def build_knowledge_base() -> None:
     secrets=[runtime_secret, generated_secret],
     cpu=1,
     memory=3072,
-    timeout=300,
+    timeout=120,
     startup_timeout=300,
     min_containers=0,
     max_containers=1,
     scaledown_window=60,
 )
-@modal.concurrent(max_inputs=4)
-@modal.asgi_app()
+@modal.concurrent(max_inputs=2)
+@modal.asgi_app(requires_proxy_auth=True)
 def api():
     """Expose the existing FastAPI application as a Modal web endpoint."""
     sys.path.insert(0, "/app")
