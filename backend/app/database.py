@@ -150,6 +150,25 @@ class Database:
     def mark_login(self, user_id: str) -> None:
         self.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (as_utc_iso(), user_id))
 
+    def update_user(
+        self,
+        user_id: str,
+        *,
+        display_name: str | None = None,
+        password_hash: str | None = None,
+    ) -> dict[str, Any]:
+        if display_name is not None:
+            self.execute(
+                "UPDATE users SET display_name = ? WHERE id = ?",
+                (display_name.strip(), user_id),
+            )
+        if password_hash is not None:
+            self.execute(
+                "UPDATE users SET password_hash = ? WHERE id = ?",
+                (password_hash, user_id),
+            )
+        return self.get_user_by_id(user_id) or {}
+
     def create_session(self, user_id: str, title: str = "Percakapan baru") -> dict[str, Any]:
         session_id = str(uuid4())
         now = utc_now()
@@ -252,4 +271,3 @@ class Database:
             expired = self.fetch_all("SELECT id FROM chat_sessions WHERE expires_at <= ?", (now,))
             self.execute("DELETE FROM chat_sessions WHERE expires_at <= ?", (now,))
         return len(expired)
-

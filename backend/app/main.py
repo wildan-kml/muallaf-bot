@@ -21,6 +21,7 @@ from .auth import (
     AuthenticatedUser,
     create_access_token,
     get_current_user,
+    get_optional_user,
     hash_password,
     require_admin,
     verify_password,
@@ -28,6 +29,7 @@ from .auth import (
 from .database import Database
 from .pipeline_factory import get_chatbot_pipeline
 from .schemas import (
+    AccountUpdateRequest,
     ChatRequest,
     ChatResponse,
     ChatMessage,
@@ -119,13 +121,14 @@ def privacy_notice() -> dict[str, Any]:
     return {
         "version": "2026-10-15",
         "summary": (
-            "Akun dan riwayat percakapan disimpan untuk memulihkan sesi pengguna. "
-            f"Riwayat dihapus otomatis {settings.chat_retention_days} hari setelah aktivitas terakhir."
+            "Akun berbasis nama pengguna dan riwayat percakapan disimpan untuk memulihkan sesi pengguna. "
+            f"Riwayat akun dihapus otomatis {settings.chat_retention_days} hari setelah aktivitas terakhir. "
+            "Percakapan tamu tidak dibuatkan sesi di database dan hanya bertahan satu jam di tab browser."
         ),
         "retention_days": settings.chat_retention_days,
         "data_collected": ["nama tampilan", "nama pengguna", "riwayat percakapan", "feedback opsional"],
-        "not_collected": ["password asli", "nomor identitas", "data pembayaran"],
-        "user_controls": ["menghapus sesi", "keluar dari akun"],
+        "not_collected": ["alamat email untuk login", "password asli", "nomor identitas", "data pembayaran"],
+        "user_controls": ["mengubah nama tampilan", "mengganti kata sandi", "menghapus sesi", "keluar dari akun"],
         "warning": "Jangan kirimkan kata sandi, nomor identitas, atau informasi pribadi yang tidak diperlukan.",
     }
 
@@ -176,6 +179,29 @@ def login(request: LoginRequest) -> LoginResponse:
 @app.get("/api/auth/me")
 def current_account(user: AuthenticatedUser = Depends(get_current_user)) -> dict[str, Any]:
     return {"user": _public_user(user)}
+
+
+@app.patch("/api/auth/me")
+def update_current_account(
+    request: AccountUpdateRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    stored_user = database.get_user_by_id(user.id)
+    if not stored_user:
+        raise HTTPException(status_code=404, detail="Akun tidak ditemukan")
+    if not request.display_name and not request.new_password:
+        raise HTTPException(status_code=422, detail="Tidak ada perubahan akun yang dikirim")
+    password_hash = None
+    if request.new_password:
+        if not request.current_password or not verify_password(request.current_password, stored_user["password_hash"]):
+            raise HTTPException(status_code=401, detail="Kata sandi saat ini salah")
+        password_hash = hash_password(request.new_password)
+    updated = database.update_user(
+        user.id,
+        display_name=request.display_name,
+        password_hash=password_hash,
+    )
+    return {"user": _public_user(updated), "message": "Pengaturan akun berhasil diperbarui"}
 
 
 @app.get("/api/sessions")
@@ -284,11 +310,17 @@ def debug_runtime(user: AuthenticatedUser = Depends(get_current_user)) -> dict[s
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(
     request: ChatRequest,
-    user: AuthenticatedUser = Depends(get_current_user),
+    user: AuthenticatedUser | None = Depends(get_optional_user),
 ) -> ChatResponse:
     question = request.prompt
     if not question:
         raise HTTPException(status_code=422, detail="question atau message wajib diisi")
+    if user is None:
+        if request.session_id:
+            raise HTTPException(status_code=400, detail="Sesi tersimpan hanya tersedia setelah login")
+        response = get_chatbot_pipeline().answer(question, history=request.history[-6:])
+        response.session_id = None
+        return response
     database.purge_expired(user_id=user.id)
     session = None
     if request.session_id:

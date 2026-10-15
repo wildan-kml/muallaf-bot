@@ -51,6 +51,8 @@ runtime_image = (
             "DEBUG_ENDPOINT_ENABLED": "false",
             "TRUST_PROXY_HEADERS": "true",
             "EMBEDDING_BATCH_SIZE": "8",
+            "FRONTEND_ORIGIN": "https://muallaf-bot.mwildankamil.workers.dev",
+            "CORS_ORIGINS": "https://muallaf-bot.mwildankamil.workers.dev",
         }
     )
     .add_local_dir(

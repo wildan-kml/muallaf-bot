@@ -67,6 +67,12 @@ class RegisterRequest(BaseModel):
     privacy_accepted: bool
 
 
+class AccountUpdateRequest(BaseModel):
+    display_name: str | None = Field(default=None, min_length=2, max_length=120)
+    current_password: str | None = Field(default=None, min_length=1, max_length=128)
+    new_password: str | None = Field(default=None, min_length=10, max_length=128)
+
+
 class SessionCreateRequest(BaseModel):
     title: str = Field(default="Percakapan baru", max_length=160)
 

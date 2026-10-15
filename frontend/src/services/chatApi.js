@@ -14,18 +14,32 @@ function toApiHistory(messages) {
 }
 
 async function apiRequest(path, { token, headers = {}, ...options } = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...headers,
-    },
-  });
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers: {
+        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...headers,
+      },
+    });
+  } catch (error) {
+    const networkError = new Error('Layanan belum dapat dihubungi. Periksa koneksi lalu coba kembali.');
+    networkError.cause = error;
+    throw networkError;
+  }
   if (response.status === 204) return null;
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(typeof data.detail === 'string' ? data.detail : 'Permintaan belum dapat diproses.');
+    const validationMessage = Array.isArray(data.detail)
+      ? data.detail.map((item) => item?.msg).filter(Boolean).join('; ')
+      : '';
+    const error = new Error(
+      typeof data.detail === 'string'
+        ? data.detail
+        : validationMessage || `Permintaan gagal diproses (${response.status}).`,
+    );
     error.status = response.status;
     throw error;
   }
@@ -50,6 +64,14 @@ export function registerAccount({ username, displayName, password, privacyAccept
 
 export function getCurrentAccount(token) {
   return apiRequest('/api/auth/me', { token });
+}
+
+export function updateAccount(token, changes) {
+  return apiRequest('/api/auth/me', {
+    token,
+    method: 'PATCH',
+    body: JSON.stringify(changes),
+  });
 }
 
 export function getPrivacyNotice() {

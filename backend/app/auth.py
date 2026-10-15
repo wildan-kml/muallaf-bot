@@ -110,7 +110,13 @@ def get_current_user(authorization: str | None = Header(default=None)) -> Authen
     )
 
 
+def get_optional_user(authorization: str | None = Header(default=None)) -> AuthenticatedUser | None:
+    """Return the signed-in user, while allowing requests without credentials."""
+    if not authorization:
+        return None
+    return get_current_user(authorization)
+
+
 def require_admin(user: AuthenticatedUser) -> None:
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Akses admin diperlukan")
-
