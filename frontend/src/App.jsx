@@ -59,6 +59,29 @@ const STATUS_MODAL_DURATION_MS = 5000;
 const FEEDBACK_COOLDOWN_KEY = 'muallaf-bot-feedback-cooldown-until-v1';
 const FEEDBACK_COOLDOWN_MS = 15 * 60 * 1000;
 
+function routeFromLocation() {
+  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  if (path === '/login') return { name: 'login' };
+  if (path === '/register') return { name: 'register' };
+  if (path === '/account') return { name: 'account' };
+  if (path === '/chat') return { name: 'chat', sessionId: null };
+  if (path.startsWith('/chat/')) {
+    try {
+      const sessionId = decodeURIComponent(path.slice('/chat/'.length));
+      return sessionId && !sessionId.includes('/')
+        ? { name: 'chat', sessionId }
+        : { name: 'unknown' };
+    } catch {
+      return { name: 'unknown' };
+    }
+  }
+  return path === '/' ? { name: 'home' } : { name: 'unknown' };
+}
+
+function chatPath(sessionId = null) {
+  return sessionId ? `/chat/${encodeURIComponent(sessionId)}` : '/chat';
+}
+
 const questionBank = [
   { icon: Heart, text: 'Saya ingin masuk Islam, langkah awalnya apa?' },
   { icon: BookOpen, text: 'Apa makna dua kalimat syahadat?' },
@@ -337,7 +360,7 @@ function BotMessage({ message, onSuggestion, onIntroduce, onOpenSource, disabled
   );
 }
 
-function BotPage({ auth, onLogout, onAccountUpdated }) {
+function BotPage({ auth, route, onNavigate, onLogout, onAccountUpdated }) {
   const isGuest = auth.mode === 'guest';
   const [sidebarQuestions, setSidebarQuestions] = useState(() => pickRandomQuestions(6));
   const [viewerSource, setViewerSource] = useState(viewerSourceFromLocation);
@@ -385,6 +408,15 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
   const feedbackCloseTimerRef = useRef(null);
   const messageEnterTimerRef = useRef(null);
 
+  const closeAccountSettings = () => {
+    setShowAccountSettings(false);
+    if (window.history.state?.muallafAccount) {
+      window.history.back();
+    } else {
+      onNavigate(chatPath(currentSessionId), { replace: true });
+    }
+  };
+
   useEffect(() => {
     const syncViewerWithHistory = () => setViewerSource(viewerSourceFromLocation());
     window.addEventListener('popstate', syncViewerWithHistory);
@@ -416,17 +448,22 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
         setHistoryStatus('');
         return;
       }
+      if (route.name === 'account') return;
       try {
         const result = await listSessions(auth.token);
         const nextSessions = result.sessions || [];
-        const selected = nextSessions.find((session) => Number(session.message_count) > 0) || null;
+        const selected = route.sessionId
+          ? nextSessions.find((session) => session.id === route.sessionId && Number(session.message_count) > 0) || null
+          : null;
         if (!active) return;
         setSessions(nextSessions);
         setCurrentSessionId(selected?.id || null);
         if (!selected) {
-          setMessages([]);
-          setIsOpeningIntroPending(true);
+          setMessages(showIntroduction ? [] : [createIntroductionMessage()]);
+          setIsOpeningIntroPending(showIntroduction);
+          setIsOpeningPromptPending(!showIntroduction);
           setHistoryStatus('');
+          if (route.sessionId) onNavigate('/chat', { replace: true });
           return;
         }
         const stored = await getSessionMessages(auth.token, selected.id);
@@ -446,7 +483,15 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
     }
     loadHistory();
     return () => { active = false; };
-  }, [auth.token, isGuest]);
+  }, [auth.token, isGuest, route.name, route.sessionId]);
+
+  useEffect(() => {
+    if (route.name === 'account' && !isGuest) {
+      openAccountSettings(false);
+    } else {
+      setShowAccountSettings(false);
+    }
+  }, [route.name, isGuest]);
 
   useEffect(() => {
     if (!isGuest) return;
@@ -506,27 +551,18 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
     [messages],
   );
 
-  async function openSession(sessionId) {
+  function openSession(sessionId) {
     if (isGuest) return;
     if (!sessionId || sessionId === currentSessionId || conversationBusy) return;
     setSessionMenuId(null);
     setHistoryStatus('Memuat percakapan...');
-    try {
-      const stored = await getSessionMessages(auth.token, sessionId);
-      setCurrentSessionId(sessionId);
-      setMessages((stored.messages || []).map(fromStoredMessage));
-      setIsOpeningIntroPending(false);
-      setIsOpeningPromptPending(false);
-      setShowIntroduction(false);
-      setHistoryStatus('');
-      if (window.matchMedia('(max-width: 940px)').matches) setSidebarOpen(false);
-    } catch (error) {
-      setHistoryStatus(error?.message || 'Percakapan belum dapat dimuat.');
-    }
+    onNavigate(chatPath(sessionId));
+    if (window.matchMedia('(max-width: 940px)').matches) setSidebarOpen(false);
   }
 
   async function startNewSession() {
     if (conversationBusy) return;
+    onNavigate('/chat');
     if (isGuest) {
       setCurrentSessionId(null);
       setMessages([createIntroductionMessage()]);
@@ -574,6 +610,7 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
       setIsOpeningIntroPending(false);
       setIsOpeningPromptPending(!restored.length);
       setHistoryStatus('');
+      onNavigate(chatPath(selected?.id || null), { replace: true });
     } catch (error) {
       setHistoryStatus(error?.message || 'Percakapan belum dapat dihapus.');
     }
@@ -631,6 +668,7 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
 
       if (response.session_id && response.session_id !== currentSessionId) {
         setCurrentSessionId(response.session_id);
+        onNavigate(chatPath(response.session_id), { replace: true });
       }
 
       setMessages((current) => [
@@ -757,7 +795,7 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
     setShowFeedback(true);
   }
 
-  function openAccountSettings() {
+  function openAccountSettings(navigate = true) {
     setAccountForm({ displayName: auth.user.display_name, currentPassword: '', newPassword: '', confirmPassword: '' });
     setAccountStatus('');
     setEditingDisplayName(false);
@@ -765,6 +803,11 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
     setShowDeleteAccount(false);
     setDeleteAccountUsername('');
     setShowAccountSettings(true);
+    if (navigate) {
+      onNavigate('/account', {
+        state: { muallafAccount: true, returnTo: chatPath(currentSessionId) },
+      });
+    }
   }
 
   async function submitAccountSettings(event) {
@@ -857,12 +900,14 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
           setMessages((stored.messages || []).map(fromStoredMessage));
           setIsOpeningIntroPending(false);
           setIsOpeningPromptPending(false);
+          onNavigate(chatPath(selected.id), { replace: true });
         } else {
           setCurrentSessionId(null);
           setMessages([createIntroductionMessage()]);
           setOpeningQuestions(pickRandomQuestions(3).map((item) => item.text));
           setIsOpeningIntroPending(false);
           setIsOpeningPromptPending(true);
+          onNavigate('/chat', { replace: true });
         }
       }
     } catch (error) {
@@ -1099,9 +1144,9 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
         </section>
       </section>
       {showAccountSettings && !isGuest && (
-        <div className="account-settings-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowAccountSettings(false); }}>
+        <div className="account-settings-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeAccountSettings(); }}>
           <section className="account-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="account-settings-title">
-            <button className="introduction-close" type="button" onClick={() => setShowAccountSettings(false)} aria-label="Tutup pengaturan akun"><X size={19} /></button>
+            <button className="introduction-close" type="button" onClick={closeAccountSettings} aria-label="Tutup pengaturan akun"><X size={19} /></button>
             <span className="privacy-eyebrow">Akun @{auth.user.username}</span>
             <h2 id="account-settings-title">Pengaturan akun</h2>
             <p>Kelola informasi akun dan keamanan Anda.</p>
@@ -1311,8 +1356,7 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
   );
 }
 
-function AuthScreen({ onAuthenticated, onContinueAsGuest }) {
-  const [mode, setMode] = useState('login');
+function AuthScreen({ mode, onModeChange, onAuthenticated, onContinueAsGuest }) {
   const [form, setForm] = useState({ username: '', displayName: '', password: '', privacyAccepted: false });
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
@@ -1381,7 +1425,7 @@ function AuthScreen({ onAuthenticated, onContinueAsGuest }) {
           password: '',
           privacyAccepted: false,
         }));
-        setMode('login');
+        onModeChange('login', { replace: true });
         setStatus('Akun berhasil dibuat. Silakan masuk dengan nama pengguna dan kata sandi Anda.');
       }
     } catch (error) {
@@ -1413,8 +1457,8 @@ function AuthScreen({ onAuthenticated, onContinueAsGuest }) {
         <img className="auth-logo" src="/imc-mask-logo.jpg" alt="Logo International Muallaf Center Masjid Agung Sunda Kelapa" />
         <h1>Muallaf Bot</h1>
         <div className={`auth-tabs is-${mode}`} role="tablist">
-          <button type="button" className={mode === 'login' ? 'is-active' : ''} onClick={() => { setMode('login'); setStatus(''); }}>Masuk</button>
-          <button type="button" className={mode === 'register' ? 'is-active' : ''} onClick={() => { setMode('register'); setStatus(''); }}>Daftar</button>
+          <button type="button" className={mode === 'login' ? 'is-active' : ''} onClick={() => { onModeChange('login'); setStatus(''); }}>Masuk</button>
+          <button type="button" className={mode === 'register' ? 'is-active' : ''} onClick={() => { onModeChange('register'); setStatus(''); }}>Daftar</button>
         </div>
         <form key={mode} className={`auth-form is-${mode}`} onSubmit={submit}>
           {mode === 'register' && (
@@ -1559,6 +1603,7 @@ function AuthScreen({ onAuthenticated, onContinueAsGuest }) {
 }
 
 export default function App() {
+  const [route, setRoute] = useState(routeFromLocation);
   const [auth, setAuth] = useState(() => {
     try {
       const stored = JSON.parse(sessionStorage.getItem(AUTH_SESSION_KEY) || 'null');
@@ -1572,6 +1617,38 @@ export default function App() {
       return null;
     }
   });
+
+  function navigate(path, { replace = false, state = {} } = {}) {
+    const current = `${window.location.pathname}${window.location.search}`;
+    if (current !== path) {
+      window.history[replace ? 'replaceState' : 'pushState'](state, '', path);
+    }
+    setRoute(routeFromLocation());
+  }
+
+  useEffect(() => {
+    const syncRoute = () => setRoute(routeFromLocation());
+    window.addEventListener('popstate', syncRoute);
+    return () => window.removeEventListener('popstate', syncRoute);
+  }, []);
+
+  useEffect(() => {
+    if (!auth && !['login', 'register'].includes(route.name)) {
+      navigate('/login', { replace: true });
+      return;
+    }
+    if (auth && ['home', 'login', 'register', 'unknown'].includes(route.name)) {
+      navigate('/chat', { replace: true });
+      return;
+    }
+    if (auth?.mode === 'guest' && route.name === 'account') {
+      navigate('/chat', { replace: true });
+      return;
+    }
+    if (auth?.mode === 'guest' && route.name === 'chat' && route.sessionId) {
+      navigate('/chat', { replace: true });
+    }
+  }, [auth, route.name, route.sessionId]);
 
   useEffect(() => {
     if (!auth?.token) return;
@@ -1612,6 +1689,7 @@ export default function App() {
     }
     sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(signedIn));
     setAuth(signedIn);
+    navigate('/chat', { replace: true });
   }
 
   function continueAsGuest() {
@@ -1623,6 +1701,7 @@ export default function App() {
     sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(guest));
     sessionStorage.setItem(GUEST_CHAT_KEY, JSON.stringify({ expiresAt: guest.expiresAt, messages: [] }));
     setAuth(guest);
+    navigate('/chat', { replace: true });
   }
 
   function accountUpdated(user) {
@@ -1645,9 +1724,17 @@ export default function App() {
       sessionStorage.removeItem(GUEST_CHAT_KEY);
     }
     setAuth(null);
+    navigate('/login', { replace: true });
   }
 
   return auth
-    ? <BotPage auth={auth} onLogout={logout} onAccountUpdated={accountUpdated} />
-    : <AuthScreen onAuthenticated={authenticated} onContinueAsGuest={continueAsGuest} />;
+    ? <BotPage auth={auth} route={route} onNavigate={navigate} onLogout={logout} onAccountUpdated={accountUpdated} />
+    : (
+      <AuthScreen
+        mode={route.name === 'register' ? 'register' : 'login'}
+        onModeChange={(mode, options) => navigate(mode === 'register' ? '/register' : '/login', options)}
+        onAuthenticated={authenticated}
+        onContinueAsGuest={continueAsGuest}
+      />
+    );
 }
