@@ -148,6 +148,48 @@ class RobustnessAndGuardrailHardeningTests(unittest.TestCase):
         self.assertEqual(response.sources, [])
         self.assertNotIn("perwalian", response.answer.lower())
 
+    def test_worship_habit_question_has_specific_intent(self) -> None:
+        self.assertEqual(
+            _classify_question("Bagaimana membangun kebiasaan ibadah secara bertahap?"),
+            "worship_habit_building",
+        )
+
+    def test_worship_habit_answer_rejects_generic_fasting_passage(self) -> None:
+        pipeline, vector_store = make_pipeline()
+        unrelated = TextChunk(
+            chunk_id="fasting_benefits",
+            content=(
+                "Mewujudkan solidaritas sosial dan menumbuhkan perekonomian Islam. "
+                "Puasa Ramadan adalah ibadah wajib dan termasuk urutan keempat Rukun Islam."
+            ),
+            document_title="Mengenal Islam Lebih Dekat",
+            page_number=40,
+            file_name="Mengenal Islam Lebih Dekat.pdf",
+        )
+        gradual = TextChunk(
+            chunk_id="gradual_worship_learning",
+            content=(
+                "Allah menghendaki kemudahan. Orang yang belum hafal bacaan shalat "
+                "wajib memperbaiki diri dengan belajar dan menghafalkannya secara bertahap."
+            ),
+            document_title="Fiqih Mualaf",
+            page_number=70,
+            file_name="Fiqih Mualaf.pdf",
+        )
+        vector_store.results = [
+            RetrievalResult(chunk=unrelated, score=0.98),
+            RetrievalResult(chunk=gradual, score=0.81),
+        ]
+
+        response = pipeline.answer("Bagaimana membangun kebiasaan ibadah secara bertahap?")
+
+        self.assertEqual(response.mode, "rag_guided")
+        self.assertIn("pilih satu kebiasaan kecil", response.answer.lower())
+        self.assertIn("target yang ringan", response.answer.lower())
+        self.assertNotIn("perekonomian", response.answer.lower())
+        self.assertEqual([source.chunk_id for source in response.sources], ["gradual_worship_learning"])
+        self.assertIn("istiqamah", vector_store.queries[0][0].lower())
+
     def test_daily_slang_human_handoff_does_not_enter_retrieval(self) -> None:
         pipeline, vector_store = make_pipeline()
 

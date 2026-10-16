@@ -1542,6 +1542,27 @@ def _classify_question(question: str) -> str | None:
         return "wudhu_invalidators"
     if _contains_any(cleaned, {"materi pembinaan", "setelah syahadat", "program pembinaan", "kelas pembinaan"}):
         return "formation_materials"
+    if (
+        _contains_any(
+            cleaned,
+            {
+                "membangun kebiasaan ibadah",
+                "membentuk kebiasaan ibadah",
+                "membiasakan ibadah",
+                "rutin beribadah",
+                "rutin ibadah",
+                "konsisten beribadah",
+                "konsisten ibadah",
+                "istiqamah beribadah",
+                "istiqomah beribadah",
+            },
+        )
+        or (
+            _contains_any(cleaned, {"kebiasaan", "rutinitas", "rutin", "konsisten", "istiqamah", "istiqomah"})
+            and _contains_any(cleaned, {"ibadah", "shalat", "sholat", "mengaji", "doa"})
+        )
+    ):
+        return "worship_habit_building"
     if _contains_any(cleaned, {"busana muslim", "pakaian muslim", "pakaian muslimah", "menutup aurat", "aurat"}) and _asks_general_explanation(cleaned):
         return "busana_muslim_general"
     if _contains_any(cleaned, {"cadar", "niqab"}) and _asks_general_explanation(cleaned):
@@ -1855,6 +1876,17 @@ CURATED_ANSWERS = {
         "Materi ini membantu mualaf memahami dasar keimanan, praktik ibadah, adab sehari-hari, dan pengenalan bacaan "
         "Al-Qur'an. Pembinaan dilakukan bertahap agar peserta tidak terbebani dan dapat membangun kebiasaan beragama "
         "dengan lebih mantap."
+    ),
+    "worship_habit_building": (
+        "Kebiasaan ibadah sebaiknya dibangun sedikit demi sedikit, bukan dengan menambah banyak target sekaligus:\n\n"
+        "1. Dahulukan ibadah wajib. Mulai dengan menjaga shalat fardhu sesuai kemampuan sambil terus memperbaiki bacaan dan gerakannya.\n"
+        "2. Pilih satu kebiasaan kecil. Misalnya, membaca satu halaman Al-Qur'an atau berdoa singkat setelah satu waktu shalat.\n"
+        "3. Tentukan waktu yang tetap. Kaitkan kebiasaan baru dengan kegiatan yang sudah rutin, seperti setelah bangun tidur atau sesudah shalat.\n"
+        "4. Gunakan target yang ringan. Lebih baik dilakukan singkat tetapi teratur daripada banyak lalu berhenti.\n"
+        "5. Catat pelaksanaannya. Gunakan tanda centang harian agar perkembangan mudah terlihat.\n"
+        "6. Jika terlewat, lanjutkan kembali pada waktu berikutnya tanpa menunggu hari atau pekan baru.\n"
+        "7. Belajar bersama pembina. Minta bantuan untuk memastikan urutan prioritas dan tata cara ibadah sudah tepat.\n\n"
+        "Setelah satu kebiasaan mulai stabil, barulah tambahkan kebiasaan berikutnya."
     ),
     "busana_muslim_general": (
         "Busana Muslim secara umum diarahkan untuk menutup aurat, sopan, tidak transparan, dan tidak membentuk tubuh secara berlebihan. "
@@ -2382,11 +2414,18 @@ FOUNDATION_RETRIEVAL_TERMS = (
     "ibadah dasar bersuci wudhu shalat akhlak Al-Qur'an"
 )
 
+WORSHIP_HABIT_RETRIEVAL_TERMS = (
+    "membangun kebiasaan ibadah bertahap istiqamah konsisten belajar shalat "
+    "secara bertahap membiasakan ibadah harian"
+)
+
 
 def _augment_retrieval_query(query: str, intent: str | None) -> str:
     """Add precise vocabulary for broad questions without replacing the user's wording."""
     if intent == "mualaf_basic_foundations":
         return f"{query}. {FOUNDATION_RETRIEVAL_TERMS}"
+    if intent == "worship_habit_building":
+        return f"{query}. {WORSHIP_HABIT_RETRIEVAL_TERMS}"
     return query
 
 
@@ -2414,16 +2453,38 @@ def _foundation_relevance_score(result: RetrievalResult) -> int:
     return sum(weight for term, weight in weighted_terms.items() if term in content)
 
 
+def _worship_habit_relevance_score(result: RetrievalResult) -> int:
+    content = _normalize_text(result.chunk.content).lower()
+    weighted_terms = {
+        "bertahap": 6,
+        "istiqamah": 6,
+        "istiqomah": 6,
+        "membiasakan": 5,
+        "kebiasaan ibadah": 5,
+        "belajar": 2,
+        "shalat": 2,
+        "sholat": 2,
+        "ibadah": 1,
+    }
+    return sum(weight for term, weight in weighted_terms.items() if term in content)
+
+
 def _prioritize_results_for_intent(
     results: list[RetrievalResult],
     intent: str | None,
 ) -> list[RetrievalResult]:
     """Prevent generic occurrences of 'mualaf' from outranking topic-specific evidence."""
-    if intent != "mualaf_basic_foundations":
+    if intent not in {"mualaf_basic_foundations", "worship_habit_building"}:
         return results
 
-    scored = [(_foundation_relevance_score(result), result) for result in results]
-    focused = [(score, result) for score, result in scored if score > 0]
+    scorer = (
+        _foundation_relevance_score
+        if intent == "mualaf_basic_foundations"
+        else _worship_habit_relevance_score
+    )
+    minimum_score = 1 if intent == "mualaf_basic_foundations" else 5
+    scored = [(scorer(result), result) for result in results]
+    focused = [(score, result) for score, result in scored if score >= minimum_score]
     if not focused:
         # It is safer to show no citation than to attach an unrelated passage
         # merely because it contains the broad word "mualaf".
