@@ -6,6 +6,7 @@ from typing import Any
 from urllib import request as urllib_request
 
 from .config import Settings, get_settings
+from .preprocessing import remove_unverified_arabic_for_indexing
 from .schemas import ChatMessage, ChatResponse, ChatSource
 from .vector_store import RetrievalResult, make_vector_store
 
@@ -699,7 +700,10 @@ def is_ambiguous_or_incomplete_query(question: str, history: list[ChatMessage] |
 
 def _is_non_substantive_input(question: str) -> bool:
     cleaned = _normalize_text(question).lower().strip(" .?!,;:")
-    return cleaned in NON_SUBSTANTIVE_INPUTS
+    if cleaned in NON_SUBSTANTIVE_INPUTS:
+        return True
+    tokens = re.findall(r"[a-z0-9]+", cleaned)
+    return len(tokens) == 1 and len(tokens[0]) <= 3
 
 
 def _non_substantive_response() -> ChatResponse:
@@ -1054,6 +1058,23 @@ def _normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "").strip())
 
 
+ARABIC_SCRIPT_RE = re.compile(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]")
+
+
+def _contains_arabic_script(text: str) -> bool:
+    return bool(ARABIC_SCRIPT_RE.search(str(text or "")))
+
+
+def _without_unverified_arabic(text: str) -> str:
+    """Remove PDF-extracted Arabic from ordinary RAG context.
+
+    Exact Arabic is only emitted through the reviewed canonical Qur'an map.
+    This prevents broken PDF glyph order from being presented as scripture or
+    paired with an unrelated Indonesian translation.
+    """
+    return remove_unverified_arabic_for_indexing(text)
+
+
 def _looks_like_noise(text: str) -> bool:
     cleaned = _normalize_text(text)
     lowered = cleaned.lower()
@@ -1073,6 +1094,11 @@ def _looks_like_noise(text: str) -> bool:
         "sambutan ketua",
     }
     if any(marker in lowered for marker in noisy_markers):
+        return True
+    if "muadz bin jabal" in lowered and "hak tetangga" in lowered:
+        # The referenced PDF passage has broken Arabic extraction and the
+        # narration is graded weak in external hadith catalogues.  Exclude it
+        # until a reviewed Arabic–Indonesian pair and grading are supplied.
         return True
     if re.search(r"\.{5,}|_{4,}|-{4,}", cleaned):
         return True
@@ -2156,21 +2182,14 @@ def _extract_quran_answer_clean(question: str, results: list[RetrievalResult]) -
         intro = re.sub(r"[\u0600-\u06FF]+", " ", intro)
         intro = _normalize_text(intro).rstrip(" .:")
 
-    if canonical:
-        intro = canonical["label"]
-        arabic = canonical["arabic"]
-        translation = canonical["translation"]
-    else:
-        arabic = _best_arabic_line(raw_content)
-        translation_match = re.search(r"Artinya:\s*(.+)", content, flags=re.IGNORECASE)
-        translation = _normalize_text(translation_match.group(1)) if translation_match else ""
-        if translation:
-            translation = re.split(
-                r"\s+(?:\d+\.\s+|[a-z]\.\s+|BAB\s+[IVXLC]+|\w+\s*//\s*\d+)\b",
-                translation,
-                maxsplit=1,
-                flags=re.IGNORECASE,
-            )[0].strip()
+    if not canonical:
+        # Never pair raw PDF Arabic with a nearby translation. PDF text order
+        # can be visual rather than logical and may cross paragraph boundaries.
+        return None
+
+    intro = canonical["label"]
+    arabic = canonical["arabic"]
+    translation = canonical["translation"]
 
     if not intro and not arabic and not translation:
         return None
@@ -2345,7 +2364,7 @@ def _make_prompt(question: str, results: list[RetrievalResult], history: list[Ch
             (
                 f"[{index}] Dokumen: {chunk.document_title}\n"
                 f"Halaman PDF: {chunk.page_number}\n"
-                f"Isi: {chunk.content}"
+                f"Isi: {_without_unverified_arabic(chunk.content)}"
             )
         )
 
@@ -2366,6 +2385,8 @@ Gunakan riwayat percakapan hanya untuk memahami maksud pertanyaan lanjutan.
 Jika pertanyaan terbaru hanya berupa lanjutan seperti "ajarkan lebih lengkap", "lanjutkan", "lebih detail", atau "apa yang harus saya siapkan", pahami sebagai kelanjutan dari pertanyaan pengguna terakhir.
 Jika pertanyaan terbaru sudah jelas membahas topik baru, abaikan riwayat percakapan.
 Jangan menjawab hanya berdasarkan riwayat; konteks dokumen tetap sumber utama.
+Jangan menulis kutipan Arab atau mengklaim sebuah terjemahan sebagai pasangan teks Arab. Teks Arab hasil ekstraksi PDF sengaja tidak disertakan karena belum diverifikasi per kutipan.
+Jangan menyebut sebuah riwayat sebagai hadis sahih atau menisbahkannya kepada perawi tertentu kecuali status dan pasangan teksnya tertulis jelas dalam konteks.
 
 Riwayat percakapan:
 {history_block}
@@ -2401,7 +2422,7 @@ def _clean_extractive_sentence(sentence: str) -> str:
 
 
 def _sanitize_normal_answer(answer: str) -> str:
-    cleaned = _normalize_text(answer)
+    cleaned = _without_unverified_arabic(answer)
     cleaned = re.sub(
         r"^berdasarkan dokumen rujukan(?: yang tersedia)?,?\s*",
         "",
@@ -2500,7 +2521,7 @@ def _extractive_answer(question: str, results: list[RetrievalResult]) -> str | N
             "dengan air suci sesuai urutan yang diajarkan."
         )
 
-    usable_text = " ".join(result.chunk.content for result in _usable_results(results))
+    usable_text = " ".join(_without_unverified_arabic(result.chunk.content) for result in _usable_results(results))
     sentences = re.split(r"(?<=[.!?])\s+|\n+", usable_text)
     selected = [
         cleaned
@@ -2720,6 +2741,20 @@ class RagPipeline:
                     model_status=self.vector_store.embedding_status,
                     source=_format_first_source(sources),
                 )
+            answer = (
+                "Maaf, saya belum dapat menampilkan kutipan Arab dan terjemahannya karena pasangan teks tersebut "
+                "belum tersedia dalam daftar ayat yang telah diverifikasi. Silakan sebutkan nama surah dan nomor "
+                "ayat secara lengkap, atau konfirmasikan kepada pembina IMC-MASK."
+            )
+            return ChatResponse(
+                answer=answer,
+                reply=answer,
+                mode="fallback",
+                next_actions=["Sebutkan surah dan nomor ayat", "Hubungi pembina"],
+                retrieval_confidence=(relevant[0].score if relevant else (results[0].score if results else None)),
+                model_status="unverified_arabic_pair",
+                escalation="source_verification_required",
+            )
 
         if not relevant and not curated:
             answer = _fallback_reply()
@@ -2750,6 +2785,9 @@ class RagPipeline:
                 )
             generation_context = usable_relevant[: self.settings.top_k]
             generated = self._generate_answer(question, generation_context, history=history)
+            if generated and _contains_arabic_script(generated):
+                logger.warning("Discarding generated answer containing unverified Arabic text.")
+                generated = None
             answer = _sanitize_normal_answer(generated) if generated else _extractive_answer(question, generation_context)
             mode = "rag" if generated else "rag_extractive"
             if not answer:

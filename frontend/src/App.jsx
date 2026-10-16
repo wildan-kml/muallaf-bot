@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   Trash2,
   UserCheck,
+  UserRound,
   Users,
   X,
 } from 'lucide-react';
@@ -350,7 +351,6 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
   const [enteringUserMessageId, setEnteringUserMessageId] = useState(null);
   const [isThinking, setIsThinking] = useState(() => Boolean(readPendingRequest()));
   const [isRefreshingQuestions, setIsRefreshingQuestions] = useState(false);
-  const [isResetting, setIsResetting] = useState(false);
   const [showIntroduction, setShowIntroduction] = useState(true);
   const [isIntroductionClosing, setIsIntroductionClosing] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -369,12 +369,13 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
   const [deleteAccountUsername, setDeleteAccountUsername] = useState('');
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [sessionMenuId, setSessionMenuId] = useState(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState(null);
+  const [renameTarget, setRenameTarget] = useState(null);
+  const [renameTitle, setRenameTitle] = useState('');
   const [isOpeningIntroPending, setIsOpeningIntroPending] = useState(() => messages.length === 0);
   const [isOpeningPromptPending, setIsOpeningPromptPending] = useState(() => (
     messages.length === 1 && messages[0]?.variant === 'intro'
   ));
-  const [showResetNotice, setShowResetNotice] = useState(false);
-  const [isResetNoticeClosing, setIsResetNoticeClosing] = useState(false);
   const [currentDateKey, setCurrentDateKey] = useState(() => localDateKey());
   const listRef = useRef(null);
   const restoreLatestChatRef = useRef(false);
@@ -382,7 +383,6 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
   const resumedRequestRef = useRef(false);
   const requestInFlightRef = useRef(Boolean(readPendingRequest()));
   const feedbackCloseTimerRef = useRef(null);
-  const resetNoticeTimerRef = useRef(null);
   const messageEnterTimerRef = useRef(null);
 
   useEffect(() => {
@@ -461,14 +461,14 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
   }, []);
 
   useEffect(() => {
-    if (!isOpeningIntroPending || showIntroduction || showResetNotice) return undefined;
+    if (!isOpeningIntroPending || showIntroduction) return undefined;
     const timer = window.setTimeout(() => {
       setMessages((current) => (current.length ? current : [createIntroductionMessage()]));
       setIsOpeningIntroPending(false);
       setIsOpeningPromptPending(true);
     }, OPENING_INTRO_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [isOpeningIntroPending, showIntroduction, showResetNotice]);
+  }, [isOpeningIntroPending, showIntroduction]);
 
   useEffect(() => {
     if (!isOpeningPromptPending || showIntroduction) return undefined;
@@ -484,7 +484,6 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
 
   useEffect(() => () => {
     window.clearTimeout(feedbackCloseTimerRef.current);
-    window.clearTimeout(resetNoticeTimerRef.current);
     window.clearTimeout(messageEnterTimerRef.current);
   }, []);
 
@@ -548,17 +547,19 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
   }
 
   async function deleteCurrentConversation() {
+    if (conversationBusy || (isGuest ? !messages.length : !currentSessionId)) return;
+    setPendingConfirmation({ type: 'delete-current' });
+  }
+
+  async function performDeleteCurrentConversation() {
     if (isGuest) {
-      if (conversationBusy || !messages.length) return;
-      if (!window.confirm('Hapus percakapan sementara ini?')) return;
       setMessages([createIntroductionMessage()]);
       setQuestion('');
       setIsOpeningIntroPending(false);
       setIsOpeningPromptPending(true);
       return;
     }
-    if (!currentSessionId || conversationBusy) return;
-    if (!window.confirm('Hapus percakapan ini secara permanen?')) return;
+    if (!currentSessionId) return;
     setHistoryStatus('Menghapus percakapan...');
     try {
       await deleteSession(auth.token, currentSessionId);
@@ -580,7 +581,7 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
 
   async function submitQuestion(text = question) {
     const trimmed = text.trim();
-    if (!trimmed || requestInFlightRef.current || isThinking || isOpeningIntroPending || isOpeningPromptPending || isResetting) return;
+    if (!trimmed || requestInFlightRef.current || isThinking || isOpeningIntroPending || isOpeningPromptPending) return;
     requestInFlightRef.current = true;
 
     const userMessage = createMessage('user', trimmed);
@@ -706,34 +707,6 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
     setIsRefreshingQuestions(false);
   }
 
-  async function resetConversation() {
-    if (isResetting) return;
-    setIsResetting(true);
-    activeRequestControllerRef.current?.abort();
-    const nextOpeningQuestions = pickRandomQuestions(3).map((item) => item.text);
-    localStorage.removeItem(PENDING_REQUEST_KEY);
-    setCurrentSessionId(null);
-    setOpeningQuestions(nextOpeningQuestions);
-    setSidebarQuestions(pickRandomQuestions(6));
-    setQuestion('');
-    setMessages([]);
-    setIsThinking(false);
-    setIsOpeningIntroPending(false);
-    setIsOpeningPromptPending(false);
-    requestInFlightRef.current = false;
-    setShowResetNotice(true);
-    setIsResetNoticeClosing(false);
-    resetNoticeTimerRef.current = window.setTimeout(async () => {
-      setIsResetNoticeClosing(true);
-      await wait(MODAL_TRANSITION_MS);
-      setShowResetNotice(false);
-      setIsResetNoticeClosing(false);
-      setMessages([createIntroductionMessage()]);
-      setIsOpeningPromptPending(true);
-      setIsResetting(false);
-    }, STATUS_MODAL_DURATION_MS);
-  }
-
   async function submitFeedbackForm(event) {
     event.preventDefault();
     if (!feedbackForm.email.trim() || !feedbackForm.feedback.trim() || isSubmittingFeedback) return;
@@ -845,11 +818,21 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
 
   async function renameConversation(session) {
     setSessionMenuId(null);
-    const nextTitle = window.prompt('Masukkan judul percakapan baru:', session.title || '');
-    if (!nextTitle?.trim() || nextTitle.trim() === session.title) return;
+    setRenameTarget(session);
+    setRenameTitle(session.title || '');
+  }
+
+  async function submitConversationRename(event) {
+    event.preventDefault();
+    const nextTitle = renameTitle.trim();
+    if (!renameTarget || !nextTitle || nextTitle === renameTarget.title) {
+      setRenameTarget(null);
+      return;
+    }
     try {
-      const updated = await renameSession(auth.token, session.id, nextTitle.trim());
-      setSessions((current) => current.map((item) => (item.id === session.id ? { ...item, ...updated } : item)));
+      const updated = await renameSession(auth.token, renameTarget.id, nextTitle);
+      setSessions((current) => current.map((item) => (item.id === renameTarget.id ? { ...item, ...updated } : item)));
+      setRenameTarget(null);
     } catch (error) {
       setHistoryStatus(error?.message || 'Judul percakapan belum dapat diubah.');
     }
@@ -857,7 +840,10 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
 
   async function deleteConversationFromMenu(session) {
     setSessionMenuId(null);
-    if (!window.confirm(`Hapus percakapan “${session.title}” secara permanen?`)) return;
+    setPendingConfirmation({ type: 'delete-session', session });
+  }
+
+  async function performDeleteConversationFromMenu(session) {
     try {
       await deleteSession(auth.token, session.id);
       const result = await listSessions(auth.token);
@@ -884,12 +870,28 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
     }
   }
 
-  const conversationBusy = isThinking || isOpeningIntroPending || isOpeningPromptPending || isResetting;
+  const conversationBusy = isThinking || isOpeningIntroPending || isOpeningPromptPending;
   const visibleSessions = sessions.filter((session) => Number(session.message_count) > 0 && session.title?.trim());
 
   function requestLogout() {
-    if (!isGuest && !window.confirm('Yakin untuk keluar?')) return;
-    onLogout();
+    if (isGuest) onLogout();
+    else setPendingConfirmation({ type: 'logout' });
+  }
+
+  async function confirmPendingAction() {
+    const action = pendingConfirmation;
+    setPendingConfirmation(null);
+    if (action?.type === 'logout') {
+      onLogout();
+      return;
+    }
+    if (action?.type === 'delete-current') {
+      await performDeleteCurrentConversation();
+      return;
+    }
+    if (action?.type === 'delete-session' && action.session) {
+      await performDeleteConversationFromMenu(action.session);
+    }
   }
 
   if (viewerSource) {
@@ -911,6 +913,7 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
 
         <aside className="question-sidebar" aria-hidden={!sidebarOpen}>
           <div className="account-panel">
+            <span className="account-profile-icon" aria-hidden="true"><UserRound size={22} /></span>
             <div>
               <strong>{auth.user.display_name}</strong>
               <span>{isGuest ? 'Sesi sementara • 1 jam' : `@${auth.user.username}`}</span>
@@ -1018,7 +1021,7 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
                 </React.Fragment>
               );
             })}
-            {(isThinking || isOpeningPromptPending || (isOpeningIntroPending && !showIntroduction && !showResetNotice)) && (
+            {(isThinking || isOpeningPromptPending || (isOpeningIntroPending && !showIntroduction)) && (
               <article className="chat-row bot">
                 <span className="bot-speaker">
                   <span className="bot-speaker-name">Muallaf Bot</span>
@@ -1069,18 +1072,7 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
             <div className="chat-meta">
               <div className="chat-meta-actions">
                 <button
-                  className={`reset-chat-button ${isResetting ? 'is-resetting' : ''}`}
-                  type="button"
-                  onClick={resetConversation}
-                  disabled={isResetting}
-                  aria-label="Ulangi percakapan"
-                  title="Ulangi percakapan"
-                >
-                  <RefreshCw size={15} />
-                  <span>{isResetting ? 'Mengulang...' : 'Ulangi chat'}</span>
-                </button>
-                <button
-                  className="reset-chat-button"
+                  className="reset-chat-button delete-conversation-button"
                   type="button"
                   onClick={deleteCurrentConversation}
                   disabled={conversationBusy || (isGuest ? !messages.length : !currentSessionId)}
@@ -1167,6 +1159,47 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
                 <button type="submit" className="danger-button" disabled={isDeletingAccount}>{isDeletingAccount ? 'Menghapus...' : 'Hapus permanen'}</button>
               </div>
             </form>
+          </section>
+        </div>
+      )}
+      {renameTarget && (
+        <div className="custom-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setRenameTarget(null); }}>
+          <section className="custom-dialog" role="dialog" aria-modal="true" aria-labelledby="rename-conversation-title">
+            <button className="introduction-close" type="button" onClick={() => setRenameTarget(null)} aria-label="Tutup"><X size={19} /></button>
+            <span className="custom-dialog-icon"><Pencil size={22} /></span>
+            <h2 id="rename-conversation-title">Ubah judul percakapan</h2>
+            <p>Gunakan judul singkat yang mudah dikenali di riwayat percakapan.</p>
+            <form onSubmit={submitConversationRename}>
+              <label>Judul percakapan
+                <input required maxLength={160} autoFocus value={renameTitle} onChange={(event) => setRenameTitle(event.target.value)} />
+              </label>
+              <div className="custom-dialog-actions">
+                <button type="button" onClick={() => setRenameTarget(null)}>Batal</button>
+                <button type="submit" className="primary">Simpan judul</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+      {pendingConfirmation && (
+        <div className="custom-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPendingConfirmation(null); }}>
+          <section className="custom-dialog" role="dialog" aria-modal="true" aria-labelledby="confirmation-title">
+            <button className="introduction-close" type="button" onClick={() => setPendingConfirmation(null)} aria-label="Batal"><X size={19} /></button>
+            <span className={`custom-dialog-icon ${pendingConfirmation.type.startsWith('delete') ? 'is-danger' : ''}`}>
+              {pendingConfirmation.type === 'logout' ? <LogOut size={22} /> : <Trash2 size={22} />}
+            </span>
+            <h2 id="confirmation-title">{pendingConfirmation.type === 'logout' ? 'Keluar dari akun?' : 'Hapus percakapan?'}</h2>
+            <p>
+              {pendingConfirmation.type === 'logout'
+                ? 'Anda perlu masuk kembali untuk mengakses riwayat percakapan akun.'
+                : `Percakapan${pendingConfirmation.session?.title ? ` “${pendingConfirmation.session.title}”` : ''} akan dihapus permanen dan tidak dapat dipulihkan.`}
+            </p>
+            <div className="custom-dialog-actions">
+              <button type="button" onClick={() => setPendingConfirmation(null)}>Batal</button>
+              <button type="button" className={pendingConfirmation.type.startsWith('delete') ? 'danger' : 'primary'} onClick={confirmPendingAction}>
+                {pendingConfirmation.type === 'logout' ? 'Ya, keluar' : 'Ya, hapus'}
+              </button>
+            </div>
           </section>
         </div>
       )}
@@ -1271,15 +1304,6 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
                 </form>
               </>
             )}
-          </section>
-        </div>
-      )}
-      {showResetNotice && (
-        <div className={`status-backdrop ${isResetNoticeClosing ? 'is-closing' : ''}`} role="presentation">
-          <section className={`status-dialog ${isResetNoticeClosing ? 'is-closing' : ''}`} role="status" aria-live="polite">
-            <span className="introduction-avatar"><Bot size={30} /></span>
-            <h2>Chat sudah diperbarui</h2>
-            <p>Muallaf Bot akan memulai percakapan baru.</p>
           </section>
         </div>
       )}

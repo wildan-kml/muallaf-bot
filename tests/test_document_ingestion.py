@@ -9,10 +9,31 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from app.document_loader import load_pdf_pages
-from app.preprocessing import PageText
+from app.preprocessing import PageText, chunk_pages, clean_document_text
 
 
 class DocumentIngestionTests(unittest.TestCase):
+    def test_arabic_words_keep_spaces_and_line_order(self) -> None:
+        cleaned = clean_document_text("قال رسول الله\nما حق الجار")
+
+        self.assertEqual(cleaned, "قال رسول الله ما حق الجار")
+        self.assertNotIn("قالرسول", cleaned)
+
+    def test_unverified_pdf_arabic_is_not_written_to_retrieval_chunks(self) -> None:
+        page = PageText(
+            "rujukan.pdf",
+            "Dokumen Rujukan",
+            1,
+            "Penjelasan hak tetangga untuk pembinaan mualaf. قال رسول الله ما حق الجار "
+            "Uraian Indonesia tetap dapat dicari dan digunakan dengan aman dalam jawaban.",
+        )
+
+        chunks = chunk_pages([page], chunk_size=300, overlap=0)
+
+        self.assertEqual(len(chunks), 1)
+        self.assertNotRegex(chunks[0].content, r"[\u0600-\u06FF]")
+        self.assertIn("Uraian Indonesia", chunks[0].content)
+
     def test_one_unreadable_pdf_aborts_the_complete_build(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             raw = Path(directory)

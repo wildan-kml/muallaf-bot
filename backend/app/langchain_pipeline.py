@@ -6,6 +6,7 @@ from .rag_pipeline import (
     RagPipeline,
     _format_chat_history,
     _make_prompt,
+    _without_unverified_arabic,
 )
 from .schemas import ChatMessage
 from .preprocessing import TextChunk
@@ -186,6 +187,8 @@ Gunakan riwayat percakapan hanya untuk memahami maksud pertanyaan lanjutan.
 Jika pertanyaan terbaru hanya berupa lanjutan seperti "ajarkan lebih lengkap", "lanjutkan", "lebih detail", atau "apa yang harus saya siapkan", pahami sebagai kelanjutan dari pertanyaan pengguna terakhir.
 Jika pertanyaan terbaru sudah jelas membahas topik baru, abaikan riwayat percakapan.
 Jangan menjawab hanya berdasarkan riwayat; konteks dokumen tetap sumber utama.
+Jangan menulis kutipan Arab atau mengklaim sebuah terjemahan sebagai pasangan teks Arab. Teks Arab hasil ekstraksi PDF sengaja tidak disertakan karena belum diverifikasi per kutipan.
+Jangan menyebut sebuah riwayat sebagai hadis sahih atau menisbahkannya kepada perawi tertentu kecuali status dan pasangan teksnya tertulis jelas dalam konteks.
 
 Riwayat percakapan:
 {history}
@@ -208,7 +211,7 @@ Jawaban:
                 (
                     f"[{index}] Dokumen: {chunk.document_title}\n"
                     f"Halaman: {chunk.page_number}\n"
-                    f"Isi: {chunk.content}"
+                    f"Isi: {_without_unverified_arabic(chunk.content)}"
                 )
             )
         return "\n\n".join(context_blocks)

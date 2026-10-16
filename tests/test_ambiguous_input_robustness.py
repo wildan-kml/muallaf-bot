@@ -222,6 +222,27 @@ class RobustnessAndGuardrailHardeningTests(unittest.TestCase):
         self.assertEqual(response.escalation, "ambiguous_or_incomplete_question")
         self.assertEqual(vector_store.queries, [])
 
+    def test_unknown_three_letter_input_does_not_enter_retrieval(self) -> None:
+        pipeline, vector_store = make_pipeline()
+
+        response = pipeline.answer("sso")
+
+        self.assertEqual(response.mode, "fallback")
+        self.assertEqual(response.model_status, "needs_question")
+        self.assertEqual(response.escalation, "non_substantive_input")
+        self.assertEqual(vector_store.queries, [])
+
+    def test_generated_unverified_arabic_is_discarded(self) -> None:
+        pipeline, _ = make_pipeline()
+        pipeline._generate_answer = lambda question, results, history=None: (
+            "نص عربي غير موثق Artinya: terjemahan yang belum cocok."
+        )
+
+        response = pipeline.answer("Bagaimana cara berwudu?")
+
+        self.assertNotRegex(response.answer, r"[\u0600-\u06FF]")
+        self.assertNotIn("terjemahan yang belum cocok", response.answer.lower())
+
     def test_shalat_procedure_uses_relevant_numbered_guidance(self) -> None:
         pipeline, _ = make_pipeline()
 

@@ -116,6 +116,8 @@ def _looks_like_noise(content: str) -> bool:
     }
     if any(marker in text for marker in noisy_markers):
         return True
+    if "muadz bin jabal" in text and "hak tetangga" in text:
+        return True
     return bool(re.search(r"\.{5,}|_{4,}|-{4,}", text))
 
 

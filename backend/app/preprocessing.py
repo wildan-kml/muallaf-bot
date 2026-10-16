@@ -50,6 +50,10 @@ def normalize_document_file_name(file_name: str = "", document_title: str = "") 
 
 
 ARABIC_CHAR_RE = re.compile(r"[\u0600-\u06FF]")
+ARABIC_PASSAGE_RE = re.compile(
+    r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]"
+    r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u0660-\u0669\s،؛؟﴿﴾۝'\"“”‘’()[\]{}.,:;!?0-9\-–—]*"
+)
 
 
 def _contains_arabic(text: str) -> bool:
@@ -63,9 +67,14 @@ def _arabic_ratio(text: str) -> float:
     return len(ARABIC_CHAR_RE.findall(value)) / max(len(value.strip()), 1)
 
 
-def _compact_arabic_spaces(text: str) -> str:
-    value = re.sub(r"\s+", " ", str(text or "")).strip()
-    return re.sub(r"(?<=[\u0600-\u06FF])\s+(?=[\u0600-\u06FF])", "", value)
+def _normalize_arabic_spaces(text: str) -> str:
+    """Preserve real Arabic word boundaries while normalizing PDF whitespace.
+
+    Removing every space between Arabic characters joins separate words and
+    changes the quoted text.  PDF extractors already expose logical text order
+    for supported documents, so only repeated whitespace is collapsed here.
+    """
+    return re.sub(r"\s+", " ", str(text or "")).strip()
 
 
 def _repair_fragmented_arabic_blocks(text: str) -> str:
@@ -79,9 +88,8 @@ def _repair_fragmented_arabic_blocks(text: str) -> str:
             return
         meaningful = [line.strip() for line in arabic_block if line.strip()]
         if meaningful:
-            reversed_lines = list(reversed(meaningful))
-            merged = "".join(_compact_arabic_spaces(line) for line in reversed_lines)
-            repaired.append(_compact_arabic_spaces(merged))
+            merged = " ".join(_normalize_arabic_spaces(line) for line in meaningful)
+            repaired.append(_normalize_arabic_spaces(merged))
         arabic_block = []
 
     for raw_line in lines:
@@ -202,6 +210,15 @@ def clean_document_text(text: str) -> str:
     text = re.sub(r"\n{3,}", "\n\n", text)
     text = re.sub(r"(?<!\n)\n(?!\n)", " ", text)
     return re.sub(r"\s+", " ", text).strip()
+
+
+def remove_unverified_arabic_for_indexing(text: str) -> str:
+    """Keep broken PDF Arabic out of embeddings and retrieval chunks.
+
+    Reviewed Arabic (currently the canonical Qur'an map) is supplied at answer
+    time.  Indonesian prose and reference labels remain searchable.
+    """
+    return re.sub(r"\s+", " ", ARABIC_PASSAGE_RE.sub(" ", str(text or ""))).strip()
 
 
 def is_non_content_page(page: PageText) -> bool:
@@ -371,7 +388,7 @@ def chunk_pages(pages: list[PageText], chunk_size: int, overlap: int) -> list[Te
         page_offsets: list[tuple[int, int]] = []
         cursor = 0
         for page in filtered_pages:
-            cleaned_page_text = clean_document_text(page.text)
+            cleaned_page_text = remove_unverified_arabic_for_indexing(clean_document_text(page.text))
             if not cleaned_page_text:
                 continue
             page_offsets.append((cursor, page.page_number))
