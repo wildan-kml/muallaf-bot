@@ -62,7 +62,7 @@ class ChatResponse(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    username: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_.-]+$")
+    username: str = Field(..., min_length=1, max_length=120)
     password: str = Field(..., min_length=1, max_length=128)
 
 
@@ -91,6 +91,7 @@ class AccountUpdateRequest(BaseModel):
     display_name: str | None = Field(default=None, min_length=2, max_length=120)
     current_password: str | None = Field(default=None, min_length=1, max_length=128)
     new_password: str | None = Field(default=None, min_length=10, max_length=128)
+    new_password_confirm: str | None = Field(default=None, min_length=10, max_length=128)
 
     @field_validator("display_name")
     @classmethod
@@ -104,7 +105,19 @@ class AccountUpdateRequest(BaseModel):
 
 
 class SessionCreateRequest(BaseModel):
-    title: str = Field(default="Percakapan baru", max_length=160)
+    title: str = Field(default="", max_length=160)
+
+
+class SessionUpdateRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=160)
+
+
+class AccountDeleteRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=100)
+
+
+class GuestConversationImportRequest(BaseModel):
+    messages: list[ChatMessage] = Field(default_factory=list, max_length=100)
 
 
 class SessionResponse(BaseModel):

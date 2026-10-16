@@ -144,6 +144,12 @@ class Database:
     def get_user_by_username(self, username: str) -> dict[str, Any] | None:
         return self.fetch_one("SELECT * FROM users WHERE username = ?", (username,))
 
+    def get_users_by_display_name(self, display_name: str) -> list[dict[str, Any]]:
+        return self.fetch_all(
+            "SELECT * FROM users WHERE LOWER(display_name) = LOWER(?) ORDER BY created_at ASC",
+            (display_name.strip(),),
+        )
+
     def get_user_by_id(self, user_id: str) -> dict[str, Any] | None:
         return self.fetch_one("SELECT * FROM users WHERE id = ?", (user_id,))
 
@@ -169,7 +175,13 @@ class Database:
             )
         return self.get_user_by_id(user_id) or {}
 
-    def create_session(self, user_id: str, title: str = "Percakapan baru") -> dict[str, Any]:
+    def delete_user(self, user_id: str) -> bool:
+        if not self.get_user_by_id(user_id):
+            return False
+        self.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        return True
+
+    def create_session(self, user_id: str, title: str = "") -> dict[str, Any]:
         session_id = str(uuid4())
         now = utc_now()
         self.execute(
@@ -179,7 +191,7 @@ class Database:
             (
                 session_id,
                 user_id,
-                title.strip()[:160] or "Percakapan baru",
+                title.strip()[:160],
                 as_utc_iso(now),
                 as_utc_iso(now),
                 as_utc_iso(now + timedelta(days=self.retention_days)),
@@ -196,10 +208,24 @@ class Database:
     def list_sessions(self, user_id: str) -> list[dict[str, Any]]:
         self.purge_expired(user_id=user_id)
         return self.fetch_all(
-            """SELECT id, title, created_at, updated_at, expires_at
-               FROM chat_sessions WHERE user_id = ? ORDER BY updated_at DESC""",
+            """SELECT sessions.id, sessions.title, sessions.created_at, sessions.updated_at,
+                      sessions.expires_at, COUNT(messages.id) AS message_count
+               FROM chat_sessions AS sessions
+               LEFT JOIN chat_messages AS messages ON messages.session_id = sessions.id
+               WHERE sessions.user_id = ?
+               GROUP BY sessions.id, sessions.title, sessions.created_at, sessions.updated_at, sessions.expires_at
+               ORDER BY sessions.updated_at DESC""",
             (user_id,),
         )
+
+    def rename_session(self, session_id: str, user_id: str, title: str) -> dict[str, Any] | None:
+        if not self.get_session(session_id, user_id):
+            return None
+        self.execute(
+            "UPDATE chat_sessions SET title = ?, updated_at = ? WHERE id = ? AND user_id = ?",
+            (title.strip()[:160], as_utc_iso(), session_id, user_id),
+        )
+        return self.get_session(session_id, user_id)
 
     def delete_session(self, session_id: str, user_id: str) -> bool:
         if not self.get_session(session_id, user_id):
@@ -226,13 +252,9 @@ class Database:
                VALUES (?, ?, ?, ?, ?, ?)""",
             (message_id, session_id, role, content, metadata_json, as_utc_iso(now)),
         )
-        title = session["title"]
-        if role == "user" and title == "Percakapan baru":
-            title = content.replace("\n", " ").strip()[:80] or title
         self.execute(
-            "UPDATE chat_sessions SET title = ?, updated_at = ?, expires_at = ? WHERE id = ?",
+            "UPDATE chat_sessions SET updated_at = ?, expires_at = ? WHERE id = ?",
             (
-                title,
                 as_utc_iso(now),
                 as_utc_iso(now + timedelta(days=self.retention_days)),
                 session_id,
@@ -246,6 +268,12 @@ class Database:
             "metadata_json": metadata_json,
             "created_at": as_utc_iso(now),
         }
+
+    def set_session_title(self, session_id: str, user_id: str, title: str) -> None:
+        self.execute(
+            "UPDATE chat_sessions SET title = ? WHERE id = ? AND user_id = ?",
+            (title.strip()[:160], session_id, user_id),
+        )
 
     def list_messages(self, session_id: str, user_id: str) -> list[dict[str, Any]]:
         if not self.get_session(session_id, user_id):

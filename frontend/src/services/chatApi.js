@@ -92,6 +92,14 @@ export function updateAccount(token, changes) {
   });
 }
 
+export function deleteAccount(token, username) {
+  return apiRequest('/api/auth/me', {
+    token,
+    method: 'DELETE',
+    body: JSON.stringify({ username }),
+  });
+}
+
 export function getPrivacyNotice() {
   return apiRequest('/api/privacy');
 }
@@ -100,11 +108,27 @@ export function listSessions(token) {
   return apiRequest('/api/sessions', { token });
 }
 
-export function createSession(token, title = 'Percakapan baru') {
+export function createSession(token, title = '') {
   return apiRequest('/api/sessions', {
     token,
     method: 'POST',
     body: JSON.stringify({ title }),
+  });
+}
+
+export function renameSession(token, sessionId, title) {
+  return apiRequest(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+    token,
+    method: 'PATCH',
+    body: JSON.stringify({ title }),
+  });
+}
+
+export function importGuestConversation(token, messages) {
+  return apiRequest('/api/sessions/import', {
+    token,
+    method: 'POST',
+    body: JSON.stringify({ messages }),
   });
 }
 

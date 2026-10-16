@@ -9,6 +9,8 @@ import {
   Heart,
   MessageSquareText,
   LogOut,
+  MoreVertical,
+  Pencil,
   Plus,
   RefreshCw,
   Send,
@@ -23,7 +25,7 @@ import SourceList from './components/SourceList.jsx';
 import DocumentViewer from './components/DocumentViewer.jsx';
 import TurnstileVerification from './components/TurnstileVerification.jsx';
 import {
-  createSession,
+  deleteAccount,
   deleteSession,
   getCurrentAccount,
   getHumanVerificationStatus,
@@ -32,7 +34,9 @@ import {
   getSessionMessages,
   listSessions,
   loginAccount,
+  importGuestConversation,
   registerAccount,
+  renameSession,
   sendChatQuestion,
   sendFeedback,
   updateAccount,
@@ -214,7 +218,7 @@ function renderBoldText(text, keyPrefix) {
 }
 
 function RichTextBlock({ text, blockKey }) {
-  const arabicPattern = /([\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff][\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff\s،؛؟﴿﴾۝]*[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff])/gu;
+  const arabicPattern = /([\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff](?:[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff\s،؛؟﴿﴾۝'"“”‘’()[\]{}.,:;!?0-9٠-٩\-–—]*[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff])?[\s،؛؟﴿﴾۝'"“”‘’()[\]{}.,:;!?0-9٠-٩\-–—]*)/gu;
   const segments = text.split(arabicPattern).filter((segment) => segment.trim());
 
   return segments.map((segment, index) => {
@@ -356,9 +360,15 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
   const [feedbackStatus, setFeedbackStatus] = useState('');
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
-  const [accountForm, setAccountForm] = useState({ displayName: auth.user.display_name, currentPassword: '', newPassword: '' });
+  const [accountForm, setAccountForm] = useState({ displayName: auth.user.display_name, currentPassword: '', newPassword: '', confirmPassword: '' });
   const [accountStatus, setAccountStatus] = useState('');
   const [isSavingAccount, setIsSavingAccount] = useState(false);
+  const [editingDisplayName, setEditingDisplayName] = useState(false);
+  const [editingPassword, setEditingPassword] = useState(false);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  const [deleteAccountUsername, setDeleteAccountUsername] = useState('');
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [sessionMenuId, setSessionMenuId] = useState(null);
   const [isOpeningIntroPending, setIsOpeningIntroPending] = useState(() => messages.length === 0);
   const [isOpeningPromptPending, setIsOpeningPromptPending] = useState(() => (
     messages.length === 1 && messages[0]?.variant === 'intro'
@@ -408,15 +418,17 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
       }
       try {
         const result = await listSessions(auth.token);
-        let nextSessions = result.sessions || [];
-        let selected = nextSessions[0];
-        if (!selected) {
-          selected = await createSession(auth.token);
-          nextSessions = [selected];
-        }
+        const nextSessions = result.sessions || [];
+        const selected = nextSessions.find((session) => Number(session.message_count) > 0) || null;
         if (!active) return;
         setSessions(nextSessions);
-        setCurrentSessionId(selected.id);
+        setCurrentSessionId(selected?.id || null);
+        if (!selected) {
+          setMessages([]);
+          setIsOpeningIntroPending(true);
+          setHistoryStatus('');
+          return;
+        }
         const stored = await getSessionMessages(auth.token, selected.id);
         if (!active) return;
         const restored = (stored.messages || []).map(fromStoredMessage);
@@ -498,6 +510,7 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
   async function openSession(sessionId) {
     if (isGuest) return;
     if (!sessionId || sessionId === currentSessionId || conversationBusy) return;
+    setSessionMenuId(null);
     setHistoryStatus('Memuat percakapan...');
     try {
       const stored = await getSessionMessages(auth.token, sessionId);
@@ -517,7 +530,7 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
     if (conversationBusy) return;
     if (isGuest) {
       setCurrentSessionId(null);
-      setMessages([]);
+      setMessages([createIntroductionMessage()]);
       setQuestion('');
       setOpeningQuestions(pickRandomQuestions(3).map((item) => item.text));
       setIsOpeningIntroPending(false);
@@ -525,26 +538,20 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
       setHistoryStatus('');
       return;
     }
-    try {
-      const session = await createSession(auth.token);
-      setSessions((current) => [session, ...current]);
-      setCurrentSessionId(session.id);
-      setMessages([]);
-      setQuestion('');
-      setOpeningQuestions(pickRandomQuestions(3).map((item) => item.text));
-      setIsOpeningIntroPending(false);
-      setIsOpeningPromptPending(true);
-      setHistoryStatus('');
-    } catch (error) {
-      setHistoryStatus(error?.message || 'Percakapan baru belum dapat dibuat.');
-    }
+    setCurrentSessionId(null);
+    setMessages([createIntroductionMessage()]);
+    setQuestion('');
+    setOpeningQuestions(pickRandomQuestions(3).map((item) => item.text));
+    setIsOpeningIntroPending(false);
+    setIsOpeningPromptPending(true);
+    setHistoryStatus('');
   }
 
   async function deleteCurrentConversation() {
     if (isGuest) {
       if (conversationBusy || !messages.length) return;
       if (!window.confirm('Hapus percakapan sementara ini?')) return;
-      setMessages([]);
+      setMessages([createIntroductionMessage()]);
       setQuestion('');
       setIsOpeningIntroPending(false);
       setIsOpeningPromptPending(true);
@@ -556,16 +563,15 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
     try {
       await deleteSession(auth.token, currentSessionId);
       const result = await listSessions(auth.token);
-      let nextSessions = result.sessions || [];
-      let selected = nextSessions[0];
-      if (!selected) {
-        selected = await createSession(auth.token);
-        nextSessions = [selected];
-      }
-      const stored = await getSessionMessages(auth.token, selected.id);
+      const nextSessions = result.sessions || [];
+      const selected = nextSessions.find((session) => Number(session.message_count) > 0) || null;
+      const stored = selected ? await getSessionMessages(auth.token, selected.id) : { messages: [] };
+      const restored = (stored.messages || []).map(fromStoredMessage);
       setSessions(nextSessions);
-      setCurrentSessionId(selected.id);
-      setMessages((stored.messages || []).map(fromStoredMessage));
+      setCurrentSessionId(selected?.id || null);
+      setMessages(restored.length ? restored : [createIntroductionMessage()]);
+      setIsOpeningIntroPending(false);
+      setIsOpeningPromptPending(!restored.length);
       setHistoryStatus('');
     } catch (error) {
       setHistoryStatus(error?.message || 'Percakapan belum dapat dihapus.');
@@ -706,19 +712,7 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
     activeRequestControllerRef.current?.abort();
     const nextOpeningQuestions = pickRandomQuestions(3).map((item) => item.text);
     localStorage.removeItem(PENDING_REQUEST_KEY);
-    if (!isGuest) {
-      try {
-        const session = await createSession(auth.token);
-        setSessions((current) => [session, ...current]);
-        setCurrentSessionId(session.id);
-      } catch (error) {
-        setHistoryStatus(error?.message || 'Percakapan baru belum dapat dibuat.');
-        setIsResetting(false);
-        return;
-      }
-    } else {
-      setCurrentSessionId(null);
-    }
+    setCurrentSessionId(null);
     setOpeningQuestions(nextOpeningQuestions);
     setSidebarQuestions(pickRandomQuestions(6));
     setQuestion('');
@@ -791,24 +785,39 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
   }
 
   function openAccountSettings() {
-    setAccountForm({ displayName: auth.user.display_name, currentPassword: '', newPassword: '' });
+    setAccountForm({ displayName: auth.user.display_name, currentPassword: '', newPassword: '', confirmPassword: '' });
     setAccountStatus('');
+    setEditingDisplayName(false);
+    setEditingPassword(false);
+    setShowDeleteAccount(false);
+    setDeleteAccountUsername('');
     setShowAccountSettings(true);
   }
 
   async function submitAccountSettings(event) {
     event.preventDefault();
     if (isSavingAccount) return;
+    if (editingPassword && accountForm.newPassword !== accountForm.confirmPassword) {
+      setAccountStatus('Konfirmasi kata sandi baru tidak cocok.');
+      return;
+    }
+    if (!editingDisplayName && !editingPassword) {
+      setAccountStatus('Pilih Ganti pada nama lengkap atau kata sandi terlebih dahulu.');
+      return;
+    }
     setIsSavingAccount(true);
     setAccountStatus('');
     try {
       const result = await updateAccount(auth.token, {
-        display_name: accountForm.displayName.trim(),
-        current_password: accountForm.currentPassword || null,
-        new_password: accountForm.newPassword || null,
+        display_name: editingDisplayName ? accountForm.displayName.trim() : null,
+        current_password: editingPassword ? accountForm.currentPassword : null,
+        new_password: editingPassword ? accountForm.newPassword : null,
+        new_password_confirm: editingPassword ? accountForm.confirmPassword : null,
       });
       onAccountUpdated(result.user);
-      setAccountForm((current) => ({ ...current, currentPassword: '', newPassword: '' }));
+      setAccountForm((current) => ({ ...current, currentPassword: '', newPassword: '', confirmPassword: '' }));
+      setEditingDisplayName(false);
+      setEditingPassword(false);
       setAccountStatus(result.message || 'Pengaturan akun berhasil diperbarui.');
     } catch (error) {
       setAccountStatus(error?.message || 'Pengaturan akun belum dapat diperbarui.');
@@ -817,7 +826,66 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
     }
   }
 
+  async function confirmDeleteAccount(event) {
+    event.preventDefault();
+    if (deleteAccountUsername.trim().toLowerCase() !== auth.user.username.toLowerCase()) {
+      setAccountStatus('Nama pengguna konfirmasi tidak cocok.');
+      return;
+    }
+    setIsDeletingAccount(true);
+    setAccountStatus('');
+    try {
+      await deleteAccount(auth.token, deleteAccountUsername.trim());
+      onLogout();
+    } catch (error) {
+      setAccountStatus(error?.message || 'Akun belum dapat dihapus.');
+      setIsDeletingAccount(false);
+    }
+  }
+
+  async function renameConversation(session) {
+    setSessionMenuId(null);
+    const nextTitle = window.prompt('Masukkan judul percakapan baru:', session.title || '');
+    if (!nextTitle?.trim() || nextTitle.trim() === session.title) return;
+    try {
+      const updated = await renameSession(auth.token, session.id, nextTitle.trim());
+      setSessions((current) => current.map((item) => (item.id === session.id ? { ...item, ...updated } : item)));
+    } catch (error) {
+      setHistoryStatus(error?.message || 'Judul percakapan belum dapat diubah.');
+    }
+  }
+
+  async function deleteConversationFromMenu(session) {
+    setSessionMenuId(null);
+    if (!window.confirm(`Hapus percakapan “${session.title}” secara permanen?`)) return;
+    try {
+      await deleteSession(auth.token, session.id);
+      const result = await listSessions(auth.token);
+      const nextSessions = result.sessions || [];
+      setSessions(nextSessions);
+      if (session.id === currentSessionId) {
+        const selected = nextSessions.find((item) => Number(item.message_count) > 0);
+        if (selected) {
+          const stored = await getSessionMessages(auth.token, selected.id);
+          setCurrentSessionId(selected.id);
+          setMessages((stored.messages || []).map(fromStoredMessage));
+          setIsOpeningIntroPending(false);
+          setIsOpeningPromptPending(false);
+        } else {
+          setCurrentSessionId(null);
+          setMessages([createIntroductionMessage()]);
+          setOpeningQuestions(pickRandomQuestions(3).map((item) => item.text));
+          setIsOpeningIntroPending(false);
+          setIsOpeningPromptPending(true);
+        }
+      }
+    } catch (error) {
+      setHistoryStatus(error?.message || 'Percakapan belum dapat dihapus.');
+    }
+  }
+
   const conversationBusy = isThinking || isOpeningIntroPending || isOpeningPromptPending || isResetting;
+  const visibleSessions = sessions.filter((session) => Number(session.message_count) > 0 && session.title?.trim());
 
   function requestLogout() {
     if (!isGuest && !window.confirm('Yakin untuk keluar?')) return;
@@ -868,18 +936,34 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
             ) : (
               <>
                 {historyStatus && <p className="history-status">{historyStatus}</p>}
-                {sessions.map((session) => (
-                  <button
-                    key={session.id}
-                    type="button"
-                    className={session.id === currentSessionId ? 'is-active' : ''}
-                    onClick={() => openSession(session.id)}
-                    disabled={conversationBusy}
-                    title={session.title}
-                  >
-                    <MessageSquareText size={16} />
-                    <span>{session.title}</span>
-                  </button>
+                {visibleSessions.map((session) => (
+                  <div className={`session-item ${session.id === currentSessionId ? 'is-active' : ''}`} key={session.id}>
+                    <button
+                      className="session-open-button"
+                      type="button"
+                      onClick={() => openSession(session.id)}
+                      disabled={conversationBusy}
+                      title={session.title}
+                    >
+                      <MessageSquareText size={16} />
+                      <span>{session.title}</span>
+                    </button>
+                    <button
+                      className="session-menu-button"
+                      type="button"
+                      aria-label={`Kelola percakapan ${session.title}`}
+                      aria-expanded={sessionMenuId === session.id}
+                      onClick={() => setSessionMenuId((current) => (current === session.id ? null : session.id))}
+                    >
+                      <MoreVertical size={17} />
+                    </button>
+                    {sessionMenuId === session.id && (
+                      <div className="session-menu" role="menu">
+                        <button type="button" role="menuitem" onClick={() => renameConversation(session)}><Pencil size={14} /> Ubah judul</button>
+                        <button type="button" role="menuitem" className="is-danger" onClick={() => deleteConversationFromMenu(session)}><Trash2 size={14} /> Hapus</button>
+                      </div>
+                    )}
+                  </div>
                 ))}
               </>
             )}
@@ -983,28 +1067,30 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
               </button>
             </form>
             <div className="chat-meta">
-              <button
-                className={`reset-chat-button ${isResetting ? 'is-resetting' : ''}`}
-                type="button"
-                onClick={resetConversation}
-                disabled={isResetting}
-                aria-label="Hapus chat dan mulai ulang"
-                title="Hapus chat dan mulai ulang"
-              >
-                <Trash2 size={15} />
-                <span>{isResetting ? 'Mengulang...' : 'Ulangi chat'}</span>
-              </button>
-              <button
-                className="reset-chat-button"
-                type="button"
-                onClick={deleteCurrentConversation}
-                disabled={conversationBusy || (isGuest ? !messages.length : !currentSessionId)}
-                aria-label="Hapus percakapan aktif"
-                title="Hapus percakapan aktif secara permanen"
-              >
-                <Trash2 size={15} />
-                <span>{isGuest ? 'Hapus chat' : 'Hapus sesi'}</span>
-              </button>
+              <div className="chat-meta-actions">
+                <button
+                  className={`reset-chat-button ${isResetting ? 'is-resetting' : ''}`}
+                  type="button"
+                  onClick={resetConversation}
+                  disabled={isResetting}
+                  aria-label="Ulangi percakapan"
+                  title="Ulangi percakapan"
+                >
+                  <RefreshCw size={15} />
+                  <span>{isResetting ? 'Mengulang...' : 'Ulangi chat'}</span>
+                </button>
+                <button
+                  className="reset-chat-button"
+                  type="button"
+                  onClick={deleteCurrentConversation}
+                  disabled={conversationBusy || (isGuest ? !messages.length : !currentSessionId)}
+                  aria-label="Hapus percakapan aktif"
+                  title="Hapus percakapan aktif secara permanen"
+                >
+                  <Trash2 size={15} />
+                  <span>Hapus percakapan</span>
+                </button>
+              </div>
               <p className="copyright">{COPYRIGHT_TEXT}</p>
               <button
                 className="feedback-button"
@@ -1026,22 +1112,60 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
             <button className="introduction-close" type="button" onClick={() => setShowAccountSettings(false)} aria-label="Tutup pengaturan akun"><X size={19} /></button>
             <span className="privacy-eyebrow">Akun @{auth.user.username}</span>
             <h2 id="account-settings-title">Pengaturan akun</h2>
-            <p>Nama pengguna tidak dapat diubah. Anda dapat memperbarui nama lengkap atau mengganti kata sandi.</p>
+            <p>Kelola informasi akun dan keamanan Anda.</p>
             <form className="account-settings-form" onSubmit={submitAccountSettings}>
-              <label>Nama lengkap
-                <input required minLength={2} maxLength={120} autoComplete="name" placeholder="Contoh: Muhammad Wildan" value={accountForm.displayName} onChange={(event) => setAccountForm((current) => ({ ...current, displayName: event.target.value }))} />
-              </label>
+              <div className="account-field-section">
+                <div className="account-field-heading"><strong>Nama lengkap</strong><button type="button" onClick={() => setEditingDisplayName((current) => !current)}>{editingDisplayName ? 'Batal' : 'Ganti'}</button></div>
+                <input required minLength={2} maxLength={120} disabled={!editingDisplayName} autoComplete="name" value={accountForm.displayName} onChange={(event) => setAccountForm((current) => ({ ...current, displayName: event.target.value }))} />
+              </div>
+              <div className="account-field-section">
+                <div className="account-field-heading"><strong>Nama pengguna</strong></div>
+                <input disabled value={auth.user.username} aria-label="Nama pengguna tidak dapat diubah" />
+                <small>Nama pengguna tidak dapat diubah.</small>
+              </div>
               <div className="account-password-section">
-                <h3>Ganti kata sandi <span>(opsional)</span></h3>
-                <label>Kata sandi saat ini
-                  <input type="password" maxLength={128} autoComplete="current-password" placeholder="Diperlukan jika mengganti kata sandi" value={accountForm.currentPassword} onChange={(event) => setAccountForm((current) => ({ ...current, currentPassword: event.target.value }))} />
-                </label>
-                <label>Kata sandi baru
-                  <input type="password" minLength={10} maxLength={128} autoComplete="new-password" placeholder="Minimal 10 karakter" value={accountForm.newPassword} onChange={(event) => setAccountForm((current) => ({ ...current, newPassword: event.target.value }))} />
-                </label>
+                <div className="account-field-heading"><h3>Kata sandi</h3><button type="button" onClick={() => setEditingPassword((current) => !current)}>{editingPassword ? 'Batal' : 'Ganti'}</button></div>
+                {!editingPassword && <p className="masked-password" aria-label="Kata sandi tersimpan">••••••••••</p>}
+                {editingPassword && (
+                  <>
+                    <label>Kata sandi saat ini
+                      <input required type="password" maxLength={128} autoComplete="current-password" placeholder="Masukkan kata sandi saat ini" value={accountForm.currentPassword} onChange={(event) => setAccountForm((current) => ({ ...current, currentPassword: event.target.value }))} />
+                    </label>
+                    <label>Kata sandi baru
+                      <input required type="password" minLength={10} maxLength={128} autoComplete="new-password" placeholder="Minimal 10 karakter" value={accountForm.newPassword} onChange={(event) => setAccountForm((current) => ({ ...current, newPassword: event.target.value }))} />
+                    </label>
+                    <label>Konfirmasi kata sandi baru
+                      <input required type="password" minLength={10} maxLength={128} autoComplete="new-password" placeholder="Ulangi kata sandi baru" value={accountForm.confirmPassword} onChange={(event) => setAccountForm((current) => ({ ...current, confirmPassword: event.target.value }))} />
+                    </label>
+                  </>
+                )}
               </div>
               {accountStatus && <p className="account-settings-status" role="status">{accountStatus}</p>}
               <button className="introduction-start" type="submit" disabled={isSavingAccount}>{isSavingAccount ? 'Menyimpan...' : 'Simpan perubahan'}</button>
+            </form>
+            <div className="delete-account-zone">
+              <div><strong>Hapus akun</strong><p>Seluruh riwayat percakapan akun akan dihapus permanen.</p></div>
+              <button type="button" onClick={() => { setAccountStatus(''); setShowDeleteAccount(true); }}>Hapus akun</button>
+            </div>
+          </section>
+        </div>
+      )}
+      {showDeleteAccount && !isGuest && (
+        <div className="account-settings-backdrop delete-account-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowDeleteAccount(false); }}>
+          <section className="delete-account-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-account-title">
+            <button className="introduction-close" type="button" onClick={() => setShowDeleteAccount(false)} aria-label="Batal menghapus akun"><X size={19} /></button>
+            <span className="privacy-eyebrow">Tindakan permanen</span>
+            <h2 id="delete-account-title">Hapus akun?</h2>
+            <p>Ketik nama pengguna <strong>{auth.user.username}</strong> untuk mengonfirmasi penghapusan akun beserta seluruh riwayat percakapan.</p>
+            <form onSubmit={confirmDeleteAccount}>
+              <label>Konfirmasi nama pengguna
+                <input required autoComplete="off" value={deleteAccountUsername} onChange={(event) => setDeleteAccountUsername(event.target.value)} placeholder={auth.user.username} />
+              </label>
+              {accountStatus && <p className="account-settings-status" role="alert">{accountStatus}</p>}
+              <div className="delete-account-actions">
+                <button type="button" onClick={() => setShowDeleteAccount(false)}>Batal</button>
+                <button type="submit" className="danger-button" disabled={isDeletingAccount}>{isDeletingAccount ? 'Menghapus...' : 'Hapus permanen'}</button>
+              </div>
             </form>
           </section>
         </div>
@@ -1224,7 +1348,7 @@ function AuthScreen({ onAuthenticated, onContinueAsGuest }) {
     try {
       if (mode === 'login') {
         const result = await loginAccount(form.username.trim(), form.password);
-        onAuthenticated({ token: result.access_token, user: result.user });
+        await onAuthenticated({ token: result.access_token, user: result.user });
       } else {
         await registerAccount(form);
         setForm((current) => ({
@@ -1239,7 +1363,7 @@ function AuthScreen({ onAuthenticated, onContinueAsGuest }) {
     } catch (error) {
       setStatus(
         mode === 'login' && error?.status === 401
-          ? 'Nama pengguna atau kata sandi salah.'
+          ? 'Nama lengkap/nama pengguna atau kata sandi salah.'
           : error?.message || 'Akun belum dapat diproses.',
       );
     } finally {
@@ -1274,9 +1398,8 @@ function AuthScreen({ onAuthenticated, onContinueAsGuest }) {
               <input required minLength={2} maxLength={120} autoComplete="name" placeholder="Contoh: Muhammad Wildan" value={form.displayName} onInvalid={(event) => setAuthValidationMessage(event, 'Nama lengkap', 2)} onInput={clearValidationMessage} onChange={(event) => setForm((current) => ({ ...current, displayName: event.target.value }))} />
             </label>
           )}
-          <label>Nama pengguna
-            <input required minLength={3} maxLength={100} autoComplete="username" pattern="[a-zA-Z0-9_.-]+" placeholder="Contoh: wildan_kamil" value={form.username} onInvalid={(event) => setAuthValidationMessage(event, 'Nama pengguna', 3, 'Nama pengguna hanya boleh berisi huruf, angka, titik, garis bawah, atau tanda hubung.')} onInput={clearValidationMessage} onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))} />
-            <small>Akun menggunakan nama pengguna, bukan alamat email.</small>
+          <label>{mode === 'login' ? 'Nama lengkap atau nama pengguna' : 'Nama pengguna'}
+            <input required minLength={mode === 'login' ? 1 : 3} maxLength={mode === 'login' ? 120 : 100} autoComplete="username" pattern={mode === 'login' ? undefined : '[a-zA-Z0-9_.-]+'} placeholder={mode === 'login' ? 'Masukkan nama lengkap atau nama pengguna' : 'Contoh: wildan_kamil'} value={form.username} onInvalid={(event) => setAuthValidationMessage(event, mode === 'login' ? 'Nama lengkap atau nama pengguna' : 'Nama pengguna', mode === 'login' ? 1 : 3, 'Nama pengguna hanya boleh berisi huruf, angka, titik, garis bawah, atau tanda hubung.')} onInput={clearValidationMessage} onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))} />
           </label>
           <label>Kata sandi
             <input required minLength={mode === 'register' ? 10 : 1} maxLength={128} type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder={mode === 'login' ? 'Masukkan kata sandi' : 'Minimal 10 karakter'} value={form.password} onInvalid={(event) => setAuthValidationMessage(event, 'Kata sandi', mode === 'register' ? 10 : 1)} onInput={clearValidationMessage} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} />
@@ -1372,7 +1495,7 @@ function AuthScreen({ onAuthenticated, onContinueAsGuest }) {
                   Riwayat percakapan memiliki masa retensi <strong>{privacy.retention_days || 30} hari sejak aktivitas terakhir</strong>. Data yang telah melewati masa tersebut memenuhi syarat untuk dihapus dalam proses pemeriksaan berkala. Pengguna juga dapat menghapus sesi percakapan lebih awal melalui kontrol yang tersedia pada aplikasi.
                 </p>
                 <p>
-                  Pada <strong>mode tamu</strong>, isi percakapan tidak dibuatkan sesi di basis data aplikasi. Salinan sementara hanya disimpan pada tab browser yang digunakan dan dihapus ketika pengguna keluar atau setelah satu jam.
+                  Pada <strong>mode tamu</strong>, isi percakapan tidak langsung dibuatkan sesi di basis data aplikasi. Salinan sementara hanya disimpan pada tab browser yang digunakan dan kedaluwarsa setelah satu jam. Apabila pengguna kemudian masuk ke akun dalam tab yang sama, percakapan tersebut dipindahkan ke riwayat akun agar dapat dilanjutkan.
                 </p>
                 <p>
                   Layanan melibatkan <strong>Cloudflare</strong> untuk hosting, rate limit, dan verifikasi Turnstile; <strong>Modal</strong> untuk menjalankan API; <strong>Neon</strong> untuk basis data; serta penyedia model bahasa yang dikonfigurasi. Akses antarlayanan dilindungi dengan kredensial rahasia dan dibatasi untuk kebutuhan operasional.
@@ -1383,7 +1506,8 @@ function AuthScreen({ onAuthenticated, onContinueAsGuest }) {
                 <h3>6. Kendali dan hak pengguna</h3>
                 <ul>
                   <li>Melihat kembali sesi dan riwayat percakapan miliknya.</li>
-                  <li>Menghapus sesi yang tidak lagi ingin disimpan.</li>
+                  <li>Mengubah judul atau menghapus percakapan yang tidak lagi ingin disimpan.</li>
+                  <li>Mengubah nama lengkap, mengganti kata sandi, atau menghapus akun beserta seluruh riwayatnya.</li>
                   <li>Keluar dari akun untuk mengakhiri sesi pada perangkat yang digunakan.</li>
                   <li>Menyampaikan permintaan koreksi atau penghapusan data melalui saluran umpan balik kepada pengelola.</li>
                 </ul>
@@ -1446,9 +1570,22 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [auth?.expiresAt, auth?.mode]);
 
-  function authenticated(value) {
+  async function authenticated(value) {
     const signedIn = { ...value, mode: 'account' };
-    sessionStorage.removeItem(GUEST_CHAT_KEY);
+    try {
+      const guest = JSON.parse(sessionStorage.getItem(GUEST_CHAT_KEY) || 'null');
+      const transferableMessages = Array.isArray(guest?.messages)
+        ? guest.messages
+          .filter((message) => ['user', 'bot'].includes(message?.role) && message?.text && !['intro', 'prompt'].includes(message?.variant))
+          .map((message) => ({ role: message.role, text: message.text }))
+        : [];
+      if (transferableMessages.some((message) => message.role === 'user')) {
+        await importGuestConversation(value.token, transferableMessages);
+      }
+      sessionStorage.removeItem(GUEST_CHAT_KEY);
+    } catch (error) {
+      console.warn('Percakapan tamu belum dapat dipindahkan ke akun.', error);
+    }
     sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(signedIn));
     setAuth(signedIn);
   }
@@ -1475,7 +1612,14 @@ export default function App() {
   function logout() {
     localStorage.removeItem(PENDING_REQUEST_KEY);
     sessionStorage.removeItem(AUTH_SESSION_KEY);
-    sessionStorage.removeItem(GUEST_CHAT_KEY);
+    try {
+      const pendingGuest = JSON.parse(sessionStorage.getItem(GUEST_CHAT_KEY) || 'null');
+      if (!pendingGuest?.expiresAt || pendingGuest.expiresAt <= Date.now()) {
+        sessionStorage.removeItem(GUEST_CHAT_KEY);
+      }
+    } catch {
+      sessionStorage.removeItem(GUEST_CHAT_KEY);
+    }
     setAuth(null);
   }
 

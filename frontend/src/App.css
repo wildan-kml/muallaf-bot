@@ -33,6 +33,7 @@
   border-radius: 999px;
   background: transparent;
   background-clip: padding-box;
+  transition: background-color 220ms ease, border-color 220ms ease;
 }
 
 @media (hover: hover) {
@@ -41,12 +42,12 @@
   }
 
   *:hover::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, var(--green-700), var(--green-900));
+    background-color: rgba(8, 120, 69, 0.82);
     background-clip: padding-box;
   }
 
   *:hover::-webkit-scrollbar-thumb:hover {
-    background: var(--green-800);
+    background-color: var(--green-800);
     background-clip: padding-box;
   }
 }
@@ -408,10 +409,44 @@ a:focus-visible {
   color: var(--ink);
 }
 .account-settings-form input:focus { border-color: var(--green-700); outline: none; box-shadow: 0 0 0 3px rgba(8,120,69,.12); }
+.account-settings-form input:disabled { cursor: not-allowed; background: #edf2ef; color: #66736d; opacity: 1; }
+.account-field-section { display: grid; gap: 8px; }
+.account-field-section small { color: var(--muted); font-size: 11px; }
+.account-field-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.account-field-heading > strong { color: var(--ink); font-size: 14px; }
+.account-field-heading button {
+  padding: 5px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: white;
+  color: var(--green-800);
+  font-size: 12px;
+  font-weight: 750;
+}
+.account-field-heading button:hover { border-color: var(--green-700); background: var(--soft); }
 .account-password-section { display: grid; gap: 14px; padding-top: 18px; border-top: 1px solid var(--line); }
 .account-password-section h3 { margin: 0; color: var(--green-900); font-size: 15px; }
 .account-password-section h3 span { color: var(--muted); font-size: 12px; font-weight: 500; }
+.masked-password { margin: 0; padding: 12px 13px; border: 1px solid var(--line); border-radius: 9px; background: #edf2ef; color: #66736d; letter-spacing: .18em; }
 .account-settings-status { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--soft); color: var(--green-900); font-size: 13px; }
+.delete-account-zone { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 24px; padding-top: 20px; border-top: 1px solid #efc9c9; }
+.delete-account-zone strong { color: #8c2222; }
+.delete-account-zone p { margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.delete-account-zone > button,
+.danger-button { padding: 9px 13px; border: 1px solid #b53a3a; border-radius: 8px; background: white; color: #9d2525; font-weight: 750; white-space: nowrap; }
+.delete-account-zone > button:hover,
+.danger-button:hover { background: #fff0f0; }
+.delete-account-backdrop { z-index: 80; }
+.delete-account-dialog { position: relative; width: min(100%, 470px); padding: 32px; border-radius: 18px; background: white; box-shadow: 0 28px 70px rgba(0,0,0,.25); }
+.delete-account-dialog h2 { margin: 8px 0; color: #7f1f1f; }
+.delete-account-dialog > p { color: var(--muted); line-height: 1.55; }
+.delete-account-dialog form,
+.delete-account-dialog label { display: grid; gap: 9px; }
+.delete-account-dialog label { color: var(--ink); font-weight: 700; }
+.delete-account-dialog input { width: 100%; padding: 12px 13px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); }
+.delete-account-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
+.delete-account-actions button { padding: 9px 14px; border-radius: 8px; font-weight: 750; }
+.delete-account-actions > button:first-child { border: 1px solid var(--line); background: white; color: var(--ink); }
 
 @media (prefers-reduced-motion: reduce) {
   .auth-tabs::before,
@@ -460,30 +495,48 @@ a:focus-visible {
   letter-spacing: 0.06em;
 }
 
-.session-history > button {
+.session-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.session-open-button {
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
-  width: 100%;
-  padding: 9px 10px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.08);
+  min-width: 0;
+  padding: 9px 5px 9px 10px;
+  border: 0;
+  background: transparent;
   color: white;
   text-align: left;
 }
 
-.session-history > button span {
+.session-open-button span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.session-history > button.is-active {
+.session-item.is-active {
   border-color: rgba(255, 255, 255, 0.72);
   background: rgba(255, 255, 255, 0.18);
 }
+
+.session-menu-button { display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 50%; background: transparent; color: white; }
+.session-menu-button:hover { background: rgba(255,255,255,.18); }
+.session-menu { position: absolute; z-index: 20; top: calc(100% - 2px); right: 4px; display: grid; min-width: 145px; padding: 5px; border: 1px solid var(--line); border-radius: 9px; background: white; box-shadow: 0 12px 28px rgba(0,35,20,.24); }
+.session-menu button { display: flex; align-items: center; gap: 8px; padding: 8px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); text-align: left; font-size: 12px; }
+.session-menu button:hover { background: var(--soft); }
+.session-menu button.is-danger { color: #9d2525; }
 
 .history-status { margin: 0; color: rgba(255,255,255,.8); font-size: 12px; }
 
@@ -767,6 +820,8 @@ a:focus-visible {
 }
 
 .arabic-text {
+  display: block;
+  max-width: 100%;
   width: 100%;
   margin: 14px 0;
   padding: 16px 18px;
@@ -780,8 +835,9 @@ a:focus-visible {
   line-height: 1.85;
   text-align: right;
   unicode-bidi: isolate;
-  overflow-wrap: normal;
+  overflow-wrap: anywhere;
   word-break: normal;
+  white-space: normal;
 }
 
 .answer-list {
@@ -1267,7 +1323,8 @@ a:focus-visible {
   justify-content: center;
   min-height: 36px;
   margin-top: 5px;
-  padding-inline: 126px;
+  padding-left: 250px;
+  padding-right: 126px;
 }
 
 .copyright {
@@ -1279,9 +1336,7 @@ a:focus-visible {
 }
 
 .reset-chat-button {
-  position: absolute;
-  left: 0;
-  bottom: 0;
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1296,6 +1351,15 @@ a:focus-visible {
   font-size: 10px;
   font-weight: 750;
   transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.chat-meta-actions {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
 
 .reset-chat-button:hover:not(:disabled) {
@@ -1752,7 +1816,8 @@ a:focus-visible {
 
   .chat-meta {
     min-height: 39px;
-    padding-inline: 44px;
+    padding-left: 82px;
+    padding-right: 44px;
   }
 
   .reset-chat-button,
@@ -1977,7 +2042,8 @@ a:focus-visible {
   }
 
   .chat-meta {
-    padding-inline: 44px;
+    padding-left: 82px;
+    padding-right: 44px;
   }
 
   .question-sidebar {

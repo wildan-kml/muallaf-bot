@@ -1,6 +1,7 @@
 import os
 import logging
 import json
+import re
 import smtplib
 import threading
 import time
@@ -31,6 +32,7 @@ from .database import Database
 from .pipeline_factory import get_chatbot_pipeline
 from .schemas import (
     AccountUpdateRequest,
+    AccountDeleteRequest,
     ChatRequest,
     ChatResponse,
     ChatMessage,
@@ -40,6 +42,8 @@ from .schemas import (
     LoginResponse,
     RegisterRequest,
     SessionCreateRequest,
+    SessionUpdateRequest,
+    GuestConversationImportRequest,
 )
 from .security import ApiSecurityMiddleware, SlidingWindowRateLimiter
 
@@ -143,7 +147,7 @@ def privacy_notice() -> dict[str, Any]:
         "retention_days": settings.chat_retention_days,
         "data_collected": ["nama lengkap", "nama pengguna", "riwayat percakapan", "data teknis keamanan sementara", "feedback opsional"],
         "not_collected": ["alamat email untuk login", "password asli", "nomor identitas", "data pembayaran"],
-        "user_controls": ["mengubah nama lengkap", "mengganti kata sandi", "menghapus sesi", "keluar dari akun"],
+        "user_controls": ["mengubah nama lengkap", "mengganti kata sandi", "mengubah judul atau menghapus sesi", "menghapus akun", "keluar dari akun"],
         "security_processing": "Cloudflare memproses token Turnstile, alamat jaringan, dan cookie keamanan berdurasi satu jam untuk mencegah spam dan penyalahgunaan.",
         "warning": "Jangan kirimkan kata sandi, nomor identitas, atau informasi pribadi yang tidak diperlukan.",
     }
@@ -174,6 +178,24 @@ def _authorization_key(request: Request) -> str | None:
     if not authorization:
         return None
     return hashlib.sha256(authorization.encode("utf-8")).hexdigest()
+
+
+def _conversation_title(question: str, answer: str = "") -> str:
+    cleaned = re.sub(r"\s+", " ", question).strip(" .?!,:;-")
+    cleaned = re.sub(
+        r"^(tolong\s+)?(jelaskan|terangkan|ceritakan|bagaimana|apa itu|apa saja|apakah|mohon)\s+",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip(" .?!,:;-")
+    if len(cleaned) < 12 or len(cleaned.split()) < 2:
+        cleaned = re.split(r"[.!?]", re.sub(r"\s+", " ", answer).strip(), maxsplit=1)[0]
+    words = cleaned.split()
+    title = " ".join(words[:10]).strip()
+    if len(title) > 72:
+        title = title[:72].rsplit(" ", 1)[0]
+    title = title or "Topik percakapan"
+    return title[:1].upper() + title[1:]
 
 
 @app.post("/api/auth/register", response_model=LoginResponse, status_code=201)
@@ -208,15 +230,21 @@ def register(request: RegisterRequest, http_request: Request) -> LoginResponse:
 
 @app.post("/api/auth/login", response_model=LoginResponse)
 def login(request: LoginRequest, http_request: Request) -> LoginResponse:
+    identifier = request.username.strip()
     _request_limiter.claim(
-        f"login:{_client_key(http_request)}:{request.username.strip().lower()}",
+        f"login:{_client_key(http_request)}:{identifier.lower()}",
         settings.login_rate_per_ten_minutes,
         600,
         "Terlalu banyak percobaan masuk. Coba lagi beberapa menit.",
     )
-    user = database.get_user_by_username(request.username.strip().lower())
-    if not user or not verify_password(request.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Nama pengguna atau kata sandi salah")
+    username_match = database.get_user_by_username(identifier.lower())
+    candidates = [username_match] if username_match else database.get_users_by_display_name(identifier)
+    user = next(
+        (candidate for candidate in candidates if candidate and verify_password(request.password, candidate["password_hash"])),
+        None,
+    )
+    if not user:
+        raise HTTPException(status_code=401, detail="Nama lengkap/nama pengguna atau kata sandi salah")
     database.mark_login(user["id"])
     token = create_access_token(user["id"], user["username"], settings.jwt_secret, settings.access_token_minutes)
     return LoginResponse(access_token=token, token_type="bearer", user=_public_user(user))
@@ -241,6 +269,8 @@ def update_current_account(
     if request.new_password:
         if not request.current_password or not verify_password(request.current_password, stored_user["password_hash"]):
             raise HTTPException(status_code=401, detail="Kata sandi saat ini salah")
+        if request.new_password != request.new_password_confirm:
+            raise HTTPException(status_code=422, detail="Konfirmasi kata sandi baru tidak cocok")
         password_hash = hash_password(request.new_password)
     updated = database.update_user(
         user.id,
@@ -248,6 +278,17 @@ def update_current_account(
         password_hash=password_hash,
     )
     return {"user": _public_user(updated), "message": "Pengaturan akun berhasil diperbarui"}
+
+
+@app.delete("/api/auth/me", status_code=204)
+def delete_current_account(
+    request: AccountDeleteRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> None:
+    if request.username.strip().lower() != user.username.lower():
+        raise HTTPException(status_code=422, detail="Nama pengguna konfirmasi tidak cocok")
+    if not database.delete_user(user.id):
+        raise HTTPException(status_code=404, detail="Akun tidak ditemukan")
 
 
 @app.get("/api/sessions")
@@ -261,6 +302,35 @@ def create_chat_session(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     return database.create_session(user.id, request.title)
+
+
+@app.patch("/api/sessions/{session_id}")
+def rename_chat_session(
+    session_id: str,
+    request: SessionUpdateRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    session = database.rename_session(session_id, user.id, request.title)
+    if not session:
+        raise HTTPException(status_code=404, detail="Sesi percakapan tidak ditemukan")
+    return session
+
+
+@app.post("/api/sessions/import", status_code=201)
+def import_guest_conversation(
+    request: GuestConversationImportRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    messages = [message for message in request.messages if message.text.strip()]
+    if not messages or not any(message.role == "user" for message in messages):
+        raise HTTPException(status_code=422, detail="Tidak ada percakapan tamu yang dapat disimpan")
+    session = database.create_session(user.id)
+    for message in messages:
+        database.add_message(session["id"], user.id, message.role, message.text.strip())
+    first_user = next(message.text for message in messages if message.role == "user")
+    first_bot = next((message.text for message in messages if message.role == "bot"), "")
+    database.set_session_title(session["id"], user.id, _conversation_title(first_user, first_bot))
+    return database.get_session(session["id"], user.id) or session
 
 
 @app.get("/api/sessions/{session_id}/messages")
@@ -408,6 +478,8 @@ def chat(
         response.answer,
         json.dumps(metadata, ensure_ascii=False),
     )
+    if not str(session.get("title") or "").strip() or session.get("title") == "Percakapan baru":
+        database.set_session_title(session["id"], user.id, _conversation_title(question, response.answer))
     return response
 
 
