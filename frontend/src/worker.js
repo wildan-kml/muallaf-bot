@@ -3,7 +3,7 @@ const HUMAN_COOKIE = 'muallaf_human';
 const HUMAN_SESSION_SECONDS = 60 * 60;
 
 const SECURITY_HEADERS = {
-  'Content-Security-Policy': "default-src 'self'; base-uri 'self'; connect-src 'self' https://challenges.cloudflare.com; font-src 'self'; form-action 'self'; frame-ancestors 'none'; frame-src https://challenges.cloudflare.com; img-src 'self' data:; object-src 'none'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; upgrade-insecure-requests",
+  'Content-Security-Policy': "default-src 'self'; base-uri 'self'; connect-src 'self' https://challenges.cloudflare.com; font-src 'self'; form-action 'self'; frame-ancestors 'none'; frame-src 'self' https://challenges.cloudflare.com; img-src 'self' data:; object-src 'none'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; upgrade-insecure-requests",
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
@@ -173,6 +173,12 @@ async function proxyApi(request, env, path) {
   responseHeaders.delete('set-cookie');
   responseHeaders.set('Cache-Control', 'no-store');
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) responseHeaders.set(name, value);
+  const isInlinePdf = path.startsWith('/api/documents/files/')
+    && responseHeaders.get('Content-Type')?.toLowerCase().startsWith('application/pdf');
+  if (isInlinePdf) {
+    responseHeaders.set('Content-Security-Policy', "frame-ancestors 'self'");
+    responseHeaders.set('X-Frame-Options', 'SAMEORIGIN');
+  }
   return new Response(response.body, { status: response.status, headers: responseHeaders });
 }
 

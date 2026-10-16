@@ -14,7 +14,6 @@ import {
   Plus,
   RefreshCw,
   Send,
-  Settings2,
   ShieldCheck,
   Trash2,
   UserCheck,
@@ -958,17 +957,24 @@ function BotPage({ auth, route, onNavigate, onLogout, onAccountUpdated }) {
 
         <aside className="question-sidebar" aria-hidden={!sidebarOpen}>
           <div className="account-panel">
-            <span className="account-profile-icon" aria-hidden="true"><UserRound size={22} /></span>
+            {isGuest ? (
+              <span className="account-profile-icon" aria-hidden="true"><UserRound size={22} /></span>
+            ) : (
+              <button
+                className="account-profile-icon account-profile-button"
+                type="button"
+                onClick={openAccountSettings}
+                aria-label="Buka pengaturan akun"
+                title="Pengaturan akun"
+              >
+                <UserRound size={22} />
+              </button>
+            )}
             <div>
               <strong>{auth.user.display_name}</strong>
               <span>{isGuest ? 'Sesi sementara • 1 jam' : `@${auth.user.username}`}</span>
             </div>
             <span className="account-actions">
-              {!isGuest && (
-                <button type="button" onClick={openAccountSettings} aria-label="Ubah pengaturan akun" title="Pengaturan akun">
-                  <Settings2 size={18} />
-                </button>
-              )}
               <button type="button" onClick={requestLogout} aria-label={isGuest ? 'Masuk atau daftar' : 'Keluar dari akun'} title={isGuest ? 'Masuk atau daftar' : 'Keluar'}>
                 <LogOut size={18} />
               </button>
