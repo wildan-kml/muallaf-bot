@@ -790,6 +790,33 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
     setShowFeedback(true);
   }
 
+  function openAccountSettings() {
+    setAccountForm({ displayName: auth.user.display_name, currentPassword: '', newPassword: '' });
+    setAccountStatus('');
+    setShowAccountSettings(true);
+  }
+
+  async function submitAccountSettings(event) {
+    event.preventDefault();
+    if (isSavingAccount) return;
+    setIsSavingAccount(true);
+    setAccountStatus('');
+    try {
+      const result = await updateAccount(auth.token, {
+        display_name: accountForm.displayName.trim(),
+        current_password: accountForm.currentPassword || null,
+        new_password: accountForm.newPassword || null,
+      });
+      onAccountUpdated(result.user);
+      setAccountForm((current) => ({ ...current, currentPassword: '', newPassword: '' }));
+      setAccountStatus(result.message || 'Pengaturan akun berhasil diperbarui.');
+    } catch (error) {
+      setAccountStatus(error?.message || 'Pengaturan akun belum dapat diperbarui.');
+    } finally {
+      setIsSavingAccount(false);
+    }
+  }
+
   const conversationBusy = isThinking || isOpeningIntroPending || isOpeningPromptPending || isResetting;
 
   function requestLogout() {
@@ -1195,10 +1222,20 @@ function AuthScreen({ onAuthenticated, onContinueAsGuest }) {
     setBusy(true);
     setStatus('');
     try {
-      const result = mode === 'login'
-        ? await loginAccount(form.username.trim(), form.password)
-        : await registerAccount(form);
-      onAuthenticated({ token: result.access_token, user: result.user });
+      if (mode === 'login') {
+        const result = await loginAccount(form.username.trim(), form.password);
+        onAuthenticated({ token: result.access_token, user: result.user });
+      } else {
+        await registerAccount(form);
+        setForm((current) => ({
+          username: current.username.trim(),
+          displayName: '',
+          password: '',
+          privacyAccepted: false,
+        }));
+        setMode('login');
+        setStatus('Akun berhasil dibuat. Silakan masuk dengan nama pengguna dan kata sandi Anda.');
+      }
     } catch (error) {
       setStatus(
         mode === 'login' && error?.status === 401
@@ -1207,33 +1244,6 @@ function AuthScreen({ onAuthenticated, onContinueAsGuest }) {
       );
     } finally {
       setBusy(false);
-    }
-  }
-
-  function openAccountSettings() {
-    setAccountForm({ displayName: auth.user.display_name, currentPassword: '', newPassword: '' });
-    setAccountStatus('');
-    setShowAccountSettings(true);
-  }
-
-  async function submitAccountSettings(event) {
-    event.preventDefault();
-    if (isSavingAccount) return;
-    setIsSavingAccount(true);
-    setAccountStatus('');
-    try {
-      const result = await updateAccount(auth.token, {
-        display_name: accountForm.displayName.trim(),
-        current_password: accountForm.currentPassword || null,
-        new_password: accountForm.newPassword || null,
-      });
-      onAccountUpdated(result.user);
-      setAccountForm((current) => ({ ...current, currentPassword: '', newPassword: '' }));
-      setAccountStatus(result.message || 'Pengaturan akun berhasil diperbarui.');
-    } catch (error) {
-      setAccountStatus(error?.message || 'Pengaturan akun belum dapat diperbarui.');
-    } finally {
-      setIsSavingAccount(false);
     }
   }
 
@@ -1252,9 +1262,7 @@ function AuthScreen({ onAuthenticated, onContinueAsGuest }) {
   return (
     <main className="auth-page">
       <section className="auth-card">
-        <div className="auth-logo" role="img" aria-label="Logo Muallaf Bot">
-          <Bot size={48} strokeWidth={1.8} />
-        </div>
+        <img className="auth-logo" src="/imc-mask-logo.jpg" alt="Logo International Muallaf Center Masjid Agung Sunda Kelapa" />
         <h1>Muallaf Bot</h1>
         <div className={`auth-tabs is-${mode}`} role="tablist">
           <button type="button" className={mode === 'login' ? 'is-active' : ''} onClick={() => { setMode('login'); setStatus(''); }}>Masuk</button>
@@ -1282,7 +1290,14 @@ function AuthScreen({ onAuthenticated, onContinueAsGuest }) {
           {mode === 'register' && security.enabled && !humanVerified && (
             <TurnstileVerification siteKey={security.siteKey} onToken={handleTurnstileToken} onError={handleTurnstileError} />
           )}
-          {status && <p className="auth-status" role="alert">{status}</p>}
+          {status && (
+            <p
+              className={`auth-status ${status.startsWith('Akun berhasil dibuat') ? 'is-success' : ''}`}
+              role={status.startsWith('Akun berhasil dibuat') ? 'status' : 'alert'}
+            >
+              {status}
+            </p>
+          )}
           <button className="auth-submit" type="submit" disabled={busy || !security.ready || (mode === 'register' && security.enabled && !humanVerified)}>{busy ? 'Memproses...' : mode === 'login' ? 'Masuk' : 'Buat akun'}</button>
         </form>
         <div className="guest-access">

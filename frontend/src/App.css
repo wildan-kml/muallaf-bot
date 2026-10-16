@@ -162,16 +162,12 @@ a:focus-visible {
 }
 
 .auth-logo {
-  display: grid;
-  place-items: center;
-  width: 92px;
-  height: 92px;
-  margin: -4px auto 18px;
-  border: 1px solid rgba(255, 255, 255, 0.42);
-  border-radius: 28px;
-  background: linear-gradient(145deg, #11945a 0%, #00532a 100%);
-  color: white;
-  box-shadow: 0 14px 30px rgba(0, 83, 42, 0.22);
+  display: block;
+  width: min(100%, 190px);
+  height: 112px;
+  margin: -8px auto 12px;
+  object-fit: contain;
+  mix-blend-mode: multiply;
 }
 
 .auth-card h1 { margin: 0; color: var(--green-900); text-align: center; }
@@ -221,6 +217,7 @@ a:focus-visible {
 .privacy-consent input { width: 17px; height: 17px; margin: 2px 0 0; accent-color: var(--green-800); }
 .privacy-consent button { padding: 0; border: 0; background: transparent; color: var(--green-700); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
 .auth-status { margin: 0; padding: 10px 12px; border-radius: 8px; background: #fff0f0; color: #922; font-size: 13px; text-align: left; }
+.auth-status.is-success { border: 1px solid #b9dfca; background: #edf9f2; color: var(--green-800); }
 .auth-submit {
   padding: 12px 18px;
   border: 0;
