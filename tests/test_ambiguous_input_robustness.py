@@ -222,6 +222,32 @@ class RobustnessAndGuardrailHardeningTests(unittest.TestCase):
         self.assertEqual(response.escalation, "ambiguous_or_incomplete_question")
         self.assertEqual(vector_store.queries, [])
 
+    def test_shalat_procedure_uses_relevant_numbered_guidance(self) -> None:
+        pipeline, _ = make_pipeline()
+
+        response = pipeline.answer("Jelaskan tata cara sholat")
+
+        self.assertEqual(response.mode, "rag_guided")
+        self.assertIn("1.", response.answer)
+        self.assertIn("takbiratul ihram", response.answer.lower())
+        self.assertIn("salam", response.answer.lower())
+        self.assertNotIn("anaknya mengikuti", response.answer.lower())
+
+    def test_answer_correction_requests_specific_restatement_without_retrieval(self) -> None:
+        pipeline, vector_store = make_pipeline()
+        history = [
+            ChatMessage(role="user", text="Jelaskan tata cara sholat"),
+            ChatMessage(role="bot", text="Jawaban yang tidak sesuai."),
+        ]
+
+        response = pipeline.answer("Bukan itu pertanyaannya", history=history)
+
+        self.assertEqual(response.mode, "fallback")
+        self.assertEqual(response.model_status, "needs_clarification")
+        self.assertEqual(response.escalation, "answer_mismatch_needs_clarification")
+        self.assertIn("tuliskan kembali", response.answer.lower())
+        self.assertEqual(vector_store.queries, [])
+
     def test_bagaimanacaranya_after_wudu_history_uses_wudu_follow_up(self) -> None:
         pipeline, vector_store = make_pipeline()
         history = [ChatMessage(role="user", text="Bagaimana cara berwudu yang benar?")]

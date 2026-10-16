@@ -792,6 +792,11 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
 
   const conversationBusy = isThinking || isOpeningIntroPending || isOpeningPromptPending || isResetting;
 
+  function requestLogout() {
+    if (!isGuest && !window.confirm('Yakin untuk keluar?')) return;
+    onLogout();
+  }
+
   if (viewerSource) {
     return <DocumentViewer source={viewerSource} onBack={closeDocumentViewer} />;
   }
@@ -821,7 +826,7 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
                   <Settings2 size={18} />
                 </button>
               )}
-              <button type="button" onClick={onLogout} aria-label={isGuest ? 'Masuk atau daftar' : 'Keluar dari akun'} title={isGuest ? 'Masuk atau daftar' : 'Keluar'}>
+              <button type="button" onClick={requestLogout} aria-label={isGuest ? 'Masuk atau daftar' : 'Keluar dari akun'} title={isGuest ? 'Masuk atau daftar' : 'Keluar'}>
                 <LogOut size={18} />
               </button>
             </span>
@@ -832,7 +837,7 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
           <div className="session-history" aria-label="Riwayat percakapan">
             <h3>{isGuest ? 'Mode tamu' : 'Riwayat percakapan'}</h3>
             {isGuest ? (
-              <p className="guest-session-note">Percakapan hanya tersimpan di tab ini dan dihapus otomatis setelah satu jam. Masuk untuk menyimpan histori selama 30 hari.</p>
+              <p className="guest-session-note">Percakapan hanya tersimpan di tab ini dan dihapus otomatis setelah satu jam.</p>
             ) : (
               <>
                 {historyStatus && <p className="history-status">{historyStatus}</p>}
@@ -929,6 +934,7 @@ function BotPage({ auth, onLogout, onAccountUpdated }) {
               }}
             >
               <textarea
+                className={question.trim() ? 'has-value' : ''}
                 value={question}
                 disabled={conversationBusy}
                 placeholder={conversationBusy ? 'Muallaf Bot sedang berpikir...' : 'Tulis pertanyaan Anda...'}
@@ -1246,7 +1252,9 @@ function AuthScreen({ onAuthenticated, onContinueAsGuest }) {
   return (
     <main className="auth-page">
       <section className="auth-card">
-        <img className="auth-logo" src="/imc-mask-logo.jpg" alt="Logo International Muallaf Center Masjid Agung Sunda Kelapa" />
+        <div className="auth-logo" role="img" aria-label="Logo Muallaf Bot">
+          <Bot size={48} strokeWidth={1.8} />
+        </div>
         <h1>Muallaf Bot</h1>
         <div className={`auth-tabs is-${mode}`} role="tablist">
           <button type="button" className={mode === 'login' ? 'is-active' : ''} onClick={() => { setMode('login'); setStatus(''); }}>Masuk</button>
@@ -1283,7 +1291,6 @@ function AuthScreen({ onAuthenticated, onContinueAsGuest }) {
             <TurnstileVerification siteKey={security.siteKey} onToken={handleTurnstileToken} onError={handleTurnstileError} />
           )}
           <button type="button" disabled={!security.ready || (security.enabled && !humanVerified)} onClick={onContinueAsGuest}>Lanjut sebagai tamu</button>
-          <p>Chat dihapus dalam 1 jam</p>
         </div>
       </section>
       {privacy && (

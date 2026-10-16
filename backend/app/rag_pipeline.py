@@ -1347,6 +1347,11 @@ def _classify_question(question: str) -> str | None:
         and _contains_any(cleaned, {"shalat", "sholat"})
     ):
         return "learn_shalat_beginner"
+    if (
+        _contains_any(cleaned, {"shalat", "sholat", "salat"})
+        and _contains_any(cleaned, {"tata cara", "urutan", "langkah", "caranya", "cara melakukan", "jelaskan cara"})
+    ):
+        return "shalat_procedure_basic"
     if _contains_any(
         cleaned,
         {
@@ -1701,6 +1706,19 @@ CURATED_ANSWERS = {
     "learn_shalat_beginner": (
         "Jika belum hafal bacaan shalat, mulailah belajar shalat secara bertahap. Fokus dulu pada urutan gerakan shalat, bacaan yang paling pokok seperti takbir, Al-Fatihah, ruku, sujud, dan salam, "
         "lalu tambah hafalan sedikit demi sedikit. Tidak harus menunggu hafal semuanya untuk mulai belajar; yang penting konsisten berlatih dan, jika memungkinkan, belajar bersama pembina."
+    ),
+    "shalat_procedure_basic": (
+        "Secara ringkas, urutan dasar shalat adalah: "
+        "1. Pastikan sudah bersuci, menutup aurat, masuk waktu shalat, dan menghadap kiblat. "
+        "2. Berdiri sesuai kemampuan dan berniat di dalam hati. "
+        "3. Lakukan takbiratul ihram. "
+        "4. Baca Al-Fatihah, kemudian surah atau ayat Al-Qur'an pada rakaat yang dianjurkan. "
+        "5. Lakukan rukuk, lalu iktidal. "
+        "6. Lakukan sujud, duduk di antara dua sujud, lalu sujud kedua. "
+        "7. Berdiri untuk rakaat berikutnya dan ulangi urutan sesuai jumlah rakaat. "
+        "8. Pada rakaat terakhir, lakukan tasyahud akhir. "
+        "9. Akhiri shalat dengan salam. "
+        "Bacaan dan gerakan sebaiknya dipelajari bertahap bersama pembina agar pelaksanaannya tepat."
     ),
     "doa_harian_beginner": (
         "Doa harian yang baik untuk mulai dipelajari mualaf adalah doa sebelum makan, sesudah makan, sebelum tidur, bangun tidur, masuk kamar mandi, keluar kamar mandi, dan keluar rumah. "
@@ -2228,6 +2246,43 @@ FOLLOW_UP_QUESTION_HINTS = {
 }
 
 
+ANSWER_CORRECTION_HINTS = {
+    "bukan itu",
+    "bukan itu pertanyaannya",
+    "bukan maksud saya",
+    "jawabannya tidak sesuai",
+    "jawabannya tidak nyambung",
+    "tidak nyambung",
+    "salah pertanyaan",
+}
+
+
+def _is_answer_correction_without_new_topic(question: str) -> bool:
+    cleaned = _normalize_text(question).lower().strip(" .?!,;:")
+    if not cleaned:
+        return False
+    return len(cleaned.split()) <= 7 and any(
+        cleaned == hint or cleaned.startswith(f"{hint} ")
+        for hint in ANSWER_CORRECTION_HINTS
+    )
+
+
+def _answer_correction_response() -> ChatResponse:
+    answer = (
+        "Maaf, jawaban sebelumnya belum sesuai dengan maksud Anda. "
+        "Silakan tuliskan kembali pertanyaan yang dimaksud secara lebih spesifik, "
+        "misalnya: **Jelaskan urutan shalat dari takbir sampai salam.**"
+    )
+    return ChatResponse(
+        answer=answer,
+        reply=answer,
+        mode="fallback",
+        next_actions=["Tulis ulang pertanyaan"],
+        model_status="needs_clarification",
+        escalation="answer_mismatch_needs_clarification",
+    )
+
+
 def _build_retrieval_query(question: str) -> str:
     return question
 
@@ -2301,6 +2356,8 @@ Anda adalah Muallaf Bot IMC-MASK untuk edukasi dasar mualaf.
 Jawab hanya berdasarkan konteks dokumen di bawah.
 Gunakan bahasa Indonesia yang lembut, ringkas, dan mudah dipahami.
 Jawab langsung, tanpa awalan "Berdasarkan dokumen rujukan yang tersedia".
+Jika pengguna meminta tata cara, urutan, langkah, persiapan, atau beberapa contoh, gunakan daftar bernomor atau berpoin dengan satu gagasan per butir; jangan menulisnya sebagai paragraf panjang.
+Pastikan jawaban benar-benar menjawab pertanyaan terbaru. Jika konteks membahas topik lain, jangan gunakan bagian tersebut untuk mengarang jawaban.
 Jangan membuat fatwa baru, jangan membahas kasus pribadi sensitif secara final.
 Jika konteks tidak cukup, arahkan pengguna untuk menghubungi pembina IMC-MASK.
 Jangan menyalin tabel, daftar hadir, daftar isi, atau baris dokumen administratif.
@@ -2601,6 +2658,9 @@ class RagPipeline:
         conversational_meta_category = _conversational_meta_category(question)
         if conversational_meta_category:
             return _conversational_meta_response(conversational_meta_category)
+
+        if _is_answer_correction_without_new_topic(question):
+            return _answer_correction_response()
 
         if is_ambiguous_or_incomplete_query(question, history):
             return _clarification_response(question)

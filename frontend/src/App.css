@@ -15,27 +15,40 @@
 * {
   box-sizing: border-box;
   scrollbar-width: thin;
-  scrollbar-color: var(--green-700) #e6f0ea;
+  scrollbar-color: transparent transparent;
 }
 
 *::-webkit-scrollbar {
-  width: 11px;
-  height: 11px;
+  width: 8px;
+  height: 8px;
 }
 
 *::-webkit-scrollbar-track {
-  background: #e6f0ea;
+  background: transparent;
   border-radius: 999px;
 }
 
 *::-webkit-scrollbar-thumb {
-  border: 2px solid #e6f0ea;
+  border: 2px solid transparent;
   border-radius: 999px;
-  background: linear-gradient(180deg, var(--green-700), var(--green-900));
+  background: transparent;
+  background-clip: padding-box;
 }
 
-*::-webkit-scrollbar-thumb:hover {
-  background: var(--green-800);
+@media (hover: hover) {
+  *:hover {
+    scrollbar-color: var(--green-700) transparent;
+  }
+
+  *:hover::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, var(--green-700), var(--green-900));
+    background-clip: padding-box;
+  }
+
+  *:hover::-webkit-scrollbar-thumb:hover {
+    background: var(--green-800);
+    background-clip: padding-box;
+  }
 }
 
 html,
@@ -149,12 +162,16 @@ a:focus-visible {
 }
 
 .auth-logo {
-  display: block;
-  width: min(100%, 190px);
-  height: 112px;
-  margin: -8px auto 12px;
-  object-fit: contain;
-  mix-blend-mode: multiply;
+  display: grid;
+  place-items: center;
+  width: 92px;
+  height: 92px;
+  margin: -4px auto 18px;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 28px;
+  background: linear-gradient(145deg, #11945a 0%, #00532a 100%);
+  color: white;
+  box-shadow: 0 14px 30px rgba(0, 83, 42, 0.22);
 }
 
 .auth-card h1 { margin: 0; color: var(--green-900); text-align: center; }
@@ -229,18 +246,18 @@ a:focus-visible {
   padding: 11px 16px;
   border: 1px solid var(--green-700);
   border-radius: 9px;
-  background: linear-gradient(180deg, #087844 0%, #004421 100%);
-  color: white;
+  background: white;
+  color: var(--green-800);
   font-weight: 750;
   box-shadow: 0 8px 18px rgba(0, 68, 33, 0.16);
   transition: filter 180ms ease, box-shadow 180ms ease, transform 180ms ease;
 }
 .guest-access button:hover {
-  filter: brightness(1.16);
-  box-shadow: 0 10px 24px rgba(0, 92, 46, 0.3), 0 0 18px rgba(18, 164, 91, 0.24);
+  background: #f1fbf6;
+  filter: brightness(1.02);
+  box-shadow: 0 10px 24px rgba(0, 92, 46, 0.18), 0 0 18px rgba(18, 164, 91, 0.2);
   transform: translateY(-1px);
 }
-.guest-access p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
 .turnstile-verification { width: 100%; min-height: 65px; overflow: hidden; border-radius: 9px; }
 .auth-submit:disabled,
 .guest-access button:disabled { cursor: not-allowed; filter: grayscale(.25); opacity: .62; transform: none; }
@@ -338,6 +355,14 @@ a:focus-visible {
   border-radius: 50%;
   background: transparent;
   color: white;
+  transition: background-color 170ms ease, border-color 170ms ease, box-shadow 170ms ease, transform 170ms ease;
+}
+
+.account-panel button:hover {
+  border-color: white;
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 7px 18px rgba(0, 35, 18, 0.22);
+  transform: translateY(-1px);
 }
 
 .guest-session-note {
@@ -410,7 +435,17 @@ a:focus-visible {
   background: white;
   color: var(--green-800);
   font-weight: 700;
+  box-shadow: 0 7px 16px rgba(0, 45, 26, 0.14);
+  transition: background-color 170ms ease, box-shadow 170ms ease, transform 170ms ease;
 }
+
+.new-session-button:hover:not(:disabled) {
+  background: #effaf4;
+  box-shadow: 0 10px 22px rgba(0, 45, 26, 0.22), 0 0 16px rgba(255, 255, 255, 0.18);
+  transform: translateY(-1px);
+}
+
+.new-session-button:disabled { cursor: wait; opacity: .68; }
 
 .session-history {
   display: grid;
@@ -623,8 +658,6 @@ a:focus-visible {
   padding: 0 6px 30px;
   overflow-x: hidden;
   overflow-y: auto;
-  scrollbar-color: var(--green-700) #e6f0ea;
-  scrollbar-width: thin;
 }
 
 .chat-row {
@@ -1072,8 +1105,11 @@ a:focus-visible {
   background: var(--white);
   color: var(--ink);
   line-height: 1.45;
+  overflow-y: auto;
   transition: border-color 180ms ease, box-shadow 180ms ease;
 }
+
+.chat-form textarea:not(.has-value) { overflow-y: hidden; }
 
 .chat-form textarea::placeholder {
   color: #7a827e;
