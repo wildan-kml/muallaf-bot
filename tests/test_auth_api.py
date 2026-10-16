@@ -12,10 +12,35 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from app.database import Database
 from app.main import app, _conversation_title
-from app.schemas import ChatResponse
+from app.schemas import AccountUpdateRequest, ChatResponse, RegisterRequest
+
+from pydantic import ValidationError
 
 
 class AuthApiTests(unittest.TestCase):
+    def test_password_policy_accepts_eight_characters(self) -> None:
+        registration = RegisterRequest(
+            username="pengguna_uji",
+            display_name="Pengguna Uji",
+            password="aman1234",
+            privacy_accepted=True,
+        )
+        update = AccountUpdateRequest(
+            current_password="kata-sandi-lama",
+            new_password="baru1234",
+            new_password_confirm="baru1234",
+        )
+
+        self.assertEqual(registration.password, "aman1234")
+        self.assertEqual(update.new_password, "baru1234")
+        with self.assertRaises(ValidationError):
+            RegisterRequest(
+                username="pengguna_uji",
+                display_name="Pengguna Uji",
+                password="pendek7",
+                privacy_accepted=True,
+            )
+
     def test_conversation_title_uses_topic_instead_of_placeholder(self) -> None:
         self.assertEqual(
             _conversation_title("Jelaskan tata cara sholat", "Jawaban panjang"),

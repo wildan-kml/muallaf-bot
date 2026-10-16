@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, field_validator
 
 
 SESSION_ID_PATTERN = r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+MINIMUM_PASSWORD_LENGTH = 8
 
 
 def _plain_text(value: str) -> str:
@@ -75,7 +76,7 @@ class LoginResponse(BaseModel):
 class RegisterRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=100, pattern=r"^[a-zA-Z0-9_.-]+$")
     display_name: str = Field(..., min_length=2, max_length=120)
-    password: str = Field(..., min_length=10, max_length=128)
+    password: str = Field(..., min_length=MINIMUM_PASSWORD_LENGTH, max_length=128)
     privacy_accepted: bool
 
     @field_validator("display_name")
@@ -90,8 +91,8 @@ class RegisterRequest(BaseModel):
 class AccountUpdateRequest(BaseModel):
     display_name: str | None = Field(default=None, min_length=2, max_length=120)
     current_password: str | None = Field(default=None, min_length=1, max_length=128)
-    new_password: str | None = Field(default=None, min_length=10, max_length=128)
-    new_password_confirm: str | None = Field(default=None, min_length=10, max_length=128)
+    new_password: str | None = Field(default=None, min_length=MINIMUM_PASSWORD_LENGTH, max_length=128)
+    new_password_confirm: str | None = Field(default=None, min_length=MINIMUM_PASSWORD_LENGTH, max_length=128)
 
     @field_validator("display_name")
     @classmethod

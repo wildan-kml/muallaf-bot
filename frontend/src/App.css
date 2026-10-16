@@ -208,6 +208,45 @@ a:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px rgba(8, 120, 69, 0.12), 0 0 18px rgba(8, 120, 69, 0.2);
 }
+.password-input-wrap {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+.auth-form .password-input-wrap input,
+.account-settings-form .password-input-wrap input {
+  padding-right: 46px;
+}
+.password-visibility-toggle {
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+.password-visibility-toggle:hover,
+.password-visibility-toggle:focus-visible {
+  outline: none;
+  background: var(--soft);
+  color: var(--green-800);
+  box-shadow: 0 0 0 2px rgba(8, 120, 69, 0.12);
+}
+.password-help {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.45;
+}
 .auth-form input::placeholder,
 .account-settings-form input::placeholder { color: #87948e; font-weight: 400; opacity: 1; }
 .auth-form input:-webkit-autofill {

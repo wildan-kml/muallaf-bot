@@ -6,6 +6,8 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleCheck,
+  Eye,
+  EyeOff,
   Heart,
   MessageSquareText,
   LogOut,
@@ -57,6 +59,7 @@ const MODAL_TRANSITION_MS = 240;
 const STATUS_MODAL_DURATION_MS = 5000;
 const FEEDBACK_COOLDOWN_KEY = 'muallaf-bot-feedback-cooldown-until-v1';
 const FEEDBACK_COOLDOWN_MS = 15 * 60 * 1000;
+const MINIMUM_PASSWORD_LENGTH = 8;
 
 function routeFromLocation() {
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
@@ -156,6 +159,27 @@ function setAuthValidationMessage(event, fieldName, minimumLength = 0, patternMe
 
 function clearValidationMessage(event) {
   event.currentTarget.setCustomValidity('');
+}
+
+function PasswordInput({ visibilityLabel = 'kata sandi', ...inputProps }) {
+  const [isVisible, setIsVisible] = useState(false);
+  const actionLabel = `${isVisible ? 'Sembunyikan' : 'Tampilkan'} ${visibilityLabel}`;
+
+  return (
+    <span className="password-input-wrap">
+      <input {...inputProps} type={isVisible ? 'text' : 'password'} />
+      <button
+        className="password-visibility-toggle"
+        type="button"
+        onClick={() => setIsVisible((current) => !current)}
+        aria-label={actionLabel}
+        aria-pressed={isVisible}
+        title={actionLabel}
+      >
+        {isVisible ? <EyeOff size={18} /> : <Eye size={18} />}
+      </button>
+    </span>
+  );
 }
 
 function readPendingRequest() {
@@ -1172,13 +1196,14 @@ function BotPage({ auth, route, onNavigate, onLogout, onAccountUpdated }) {
                 {editingPassword && (
                   <>
                     <label>Kata sandi saat ini
-                      <input required type="password" maxLength={128} autoComplete="current-password" placeholder="Masukkan kata sandi saat ini" value={accountForm.currentPassword} onChange={(event) => setAccountForm((current) => ({ ...current, currentPassword: event.target.value }))} />
+                      <PasswordInput required maxLength={128} autoComplete="current-password" placeholder="Masukkan kata sandi saat ini" visibilityLabel="kata sandi saat ini" value={accountForm.currentPassword} onInvalid={(event) => setAuthValidationMessage(event, 'Kata sandi saat ini', 1)} onInput={clearValidationMessage} onChange={(event) => setAccountForm((current) => ({ ...current, currentPassword: event.target.value }))} />
                     </label>
                     <label>Kata sandi baru
-                      <input required type="password" minLength={10} maxLength={128} autoComplete="new-password" placeholder="Minimal 10 karakter" value={accountForm.newPassword} onChange={(event) => setAccountForm((current) => ({ ...current, newPassword: event.target.value }))} />
+                      <PasswordInput required minLength={MINIMUM_PASSWORD_LENGTH} maxLength={128} autoComplete="new-password" placeholder="Minimal 8 karakter" visibilityLabel="kata sandi baru" value={accountForm.newPassword} onInvalid={(event) => setAuthValidationMessage(event, 'Kata sandi baru', MINIMUM_PASSWORD_LENGTH)} onInput={clearValidationMessage} onChange={(event) => setAccountForm((current) => ({ ...current, newPassword: event.target.value }))} />
+                      <small className="password-help">Minimal 8 karakter. Boleh menggunakan huruf, angka, atau simbol tanpa syarat kombinasi tertentu.</small>
                     </label>
                     <label>Konfirmasi kata sandi baru
-                      <input required type="password" minLength={10} maxLength={128} autoComplete="new-password" placeholder="Ulangi kata sandi baru" value={accountForm.confirmPassword} onChange={(event) => setAccountForm((current) => ({ ...current, confirmPassword: event.target.value }))} />
+                      <PasswordInput required minLength={MINIMUM_PASSWORD_LENGTH} maxLength={128} autoComplete="new-password" placeholder="Ulangi kata sandi baru" visibilityLabel="konfirmasi kata sandi baru" value={accountForm.confirmPassword} onInvalid={(event) => setAuthValidationMessage(event, 'Konfirmasi kata sandi baru', MINIMUM_PASSWORD_LENGTH)} onInput={clearValidationMessage} onChange={(event) => setAccountForm((current) => ({ ...current, confirmPassword: event.target.value }))} />
                     </label>
                   </>
                 )}
@@ -1476,7 +1501,8 @@ function AuthScreen({ mode, onModeChange, onAuthenticated, onContinueAsGuest }) 
             <input required minLength={mode === 'login' ? 1 : 3} maxLength={mode === 'login' ? 120 : 100} autoComplete="username" pattern={mode === 'login' ? undefined : '[a-zA-Z0-9_.-]+'} placeholder={mode === 'login' ? 'Masukkan nama lengkap atau nama pengguna' : 'Contoh: wildan_kamil'} value={form.username} onInvalid={(event) => setAuthValidationMessage(event, mode === 'login' ? 'Nama lengkap atau nama pengguna' : 'Nama pengguna', mode === 'login' ? 1 : 3, 'Nama pengguna hanya boleh berisi huruf, angka, titik, garis bawah, atau tanda hubung.')} onInput={clearValidationMessage} onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))} />
           </label>
           <label>Kata sandi
-            <input required minLength={mode === 'register' ? 10 : 1} maxLength={128} type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder={mode === 'login' ? 'Masukkan kata sandi' : 'Minimal 10 karakter'} value={form.password} onInvalid={(event) => setAuthValidationMessage(event, 'Kata sandi', mode === 'register' ? 10 : 1)} onInput={clearValidationMessage} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} />
+            <PasswordInput required minLength={mode === 'register' ? MINIMUM_PASSWORD_LENGTH : 1} maxLength={128} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder={mode === 'login' ? 'Masukkan kata sandi' : 'Minimal 8 karakter'} value={form.password} onInvalid={(event) => setAuthValidationMessage(event, 'Kata sandi', mode === 'register' ? MINIMUM_PASSWORD_LENGTH : 1)} onInput={clearValidationMessage} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} />
+            {mode === 'register' && <small className="password-help">Minimal 8 karakter. Boleh menggunakan huruf, angka, atau simbol tanpa syarat kombinasi tertentu.</small>}
           </label>
           {mode === 'register' && (
             <label className="privacy-consent">

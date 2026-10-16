@@ -16,6 +16,19 @@ function toApiHistory(messages) {
     .filter((message) => message.text.length > 0);
 }
 
+function localizedValidationMessage(item) {
+  const field = Array.isArray(item?.loc) ? item.loc.at(-1) : '';
+  const labels = {
+    password: 'Kata sandi',
+    new_password: 'Kata sandi baru',
+    new_password_confirm: 'Konfirmasi kata sandi baru',
+  };
+  if (labels[field] && item?.type === 'string_too_short') {
+    return `${labels[field]} minimal ${item?.ctx?.min_length || 8} karakter.`;
+  }
+  return String(item?.msg || '').replace(/^Value error,\s*/i, '');
+}
+
 async function apiRequest(path, { token, headers = {}, ...options } = {}) {
   let response;
   try {
@@ -35,13 +48,13 @@ async function apiRequest(path, { token, headers = {}, ...options } = {}) {
   if (response.status === 204) return null;
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const validationMessage = Array.isArray(data.detail)
-      ? data.detail.map((item) => item?.msg).filter(Boolean).join('; ')
+    const validationSummary = Array.isArray(data.detail)
+      ? data.detail.map((item) => localizedValidationMessage(item)).filter(Boolean).join('; ')
       : '';
     const error = new Error(
       typeof data.detail === 'string'
         ? data.detail
-        : validationMessage || `Permintaan gagal diproses (${response.status}).`,
+        : validationSummary || `Permintaan gagal diproses (${response.status}).`,
     );
     error.status = response.status;
     throw error;
