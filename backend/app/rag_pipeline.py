@@ -1296,6 +1296,34 @@ def _classify_question(question: str) -> str | None:
         return "quran_verse"
     if _contains_any(cleaned, {"makna syahadat", "arti syahadat", "dua kalimat syahadat"}):
         return "syahadat_meaning"
+    if (
+        _contains_any(
+            cleaned,
+            {
+                "hal dasar",
+                "dasar-dasar",
+                "dasar yang perlu",
+                "dasar yang harus",
+                "bekal awal",
+                "pelajaran awal",
+                "yang perlu dipahami",
+                "yang harus dipahami",
+            },
+        )
+        and _contains_any(
+            cleaned,
+            {
+                "calon mualaf",
+                "calon muallaf",
+                "mualaf",
+                "muallaf",
+                "baru masuk islam",
+                "baru menjadi muslim",
+                "muslim baru",
+            },
+        )
+    ):
+        return "mualaf_basic_foundations"
     if _contains_any(cleaned, {"aqidah", "akidah"}) and _asks_general_explanation(cleaned):
         return "aqidah_definition"
     if _contains_any(cleaned, {"rukun islam"}) and _contains_any(cleaned, {"rukun iman"}) and _contains_any(cleaned, {"beda", "bedanya", "perbedaan"}):
@@ -1621,6 +1649,16 @@ CURATED_ANSWERS = {
         "Dua kalimat syahadat adalah persaksian bahwa tidak ada Tuhan selain Allah dan Nabi Muhammad adalah utusan Allah. "
         "Maknanya bukan hanya diucapkan, tetapi juga diterima dengan sadar sebagai dasar keimanan seorang muslim. Setelah "
         "syahadat, proses berikutnya adalah belajar menjalankan ajaran Islam secara bertahap sesuai kemampuan."
+    ),
+    "mualaf_basic_foundations": (
+        "Hal dasar yang perlu dipahami calon mualaf dapat dipelajari secara bertahap:\n\n"
+        "1. Akidah dan syahadat: mengenal Allah, memahami makna dua kalimat syahadat, serta meyakini enam rukun iman.\n"
+        "2. Rukun Islam: memahami syahadat, shalat, zakat, puasa Ramadan, dan haji bagi yang mampu.\n"
+        "3. Ibadah harian: mulai dari bersuci, wudhu, dan shalat fardhu beserta bacaan dasarnya.\n"
+        "4. Al-Qur'an dan doa: belajar membaca, memahami makna, dan menghafal bacaan pendek sedikit demi sedikit.\n"
+        "5. Akhlak: membiasakan kejujuran, kesabaran, menjaga hubungan keluarga, dan berbuat baik kepada sesama.\n\n"
+        "Calon mualaf tidak harus menguasai semuanya sekaligus. Utamakan fondasi keimanan dan ibadah wajib, "
+        "kemudian lanjutkan dengan pendampingan pembina agar proses belajarnya terarah."
     ),
     "aqidah_definition": (
         "Aqidah adalah keyakinan dasar yang tertanam kuat dalam hati seorang Muslim. Dalam Islam, aqidah berkaitan dengan keimanan kepada Allah, "
@@ -2339,6 +2377,62 @@ def _build_contextual_retrieval_query(question: str, history: list[ChatMessage] 
     return _build_retrieval_query(f"{previous_question}. {question}")
 
 
+FOUNDATION_RETRIEVAL_TERMS = (
+    "akidah aqidah syahadat rukun Islam rukun iman Islam iman ihsan "
+    "ibadah dasar bersuci wudhu shalat akhlak Al-Qur'an"
+)
+
+
+def _augment_retrieval_query(query: str, intent: str | None) -> str:
+    """Add precise vocabulary for broad questions without replacing the user's wording."""
+    if intent == "mualaf_basic_foundations":
+        return f"{query}. {FOUNDATION_RETRIEVAL_TERMS}"
+    return query
+
+
+def _foundation_relevance_score(result: RetrievalResult) -> int:
+    content = _normalize_text(result.chunk.content).lower()
+    weighted_terms = {
+        "rukun islam": 5,
+        "rukun iman": 5,
+        "islam, iman, dan ihsan": 5,
+        "islam iman dan ihsan": 5,
+        "aqidah": 3,
+        "akidah": 3,
+        "syahadat": 2,
+        "fiqih ibadah": 3,
+        "studi islam dasar": 3,
+        "bersuci": 2,
+        "wudhu": 2,
+        "wudu": 2,
+        "shalat": 2,
+        "sholat": 2,
+        "akhlak": 1,
+        "al-qur'an": 1,
+        "al-quran": 1,
+    }
+    return sum(weight for term, weight in weighted_terms.items() if term in content)
+
+
+def _prioritize_results_for_intent(
+    results: list[RetrievalResult],
+    intent: str | None,
+) -> list[RetrievalResult]:
+    """Prevent generic occurrences of 'mualaf' from outranking topic-specific evidence."""
+    if intent != "mualaf_basic_foundations":
+        return results
+
+    scored = [(_foundation_relevance_score(result), result) for result in results]
+    focused = [(score, result) for score, result in scored if score > 0]
+    if not focused:
+        # It is safer to show no citation than to attach an unrelated passage
+        # merely because it contains the broad word "mualaf".
+        return []
+
+    focused.sort(key=lambda item: (item[0], item[1].score), reverse=True)
+    return [result for _, result in focused]
+
+
 def _format_chat_history(history: list[ChatMessage] | None, limit: int = 6) -> str:
     if not history:
         return "Tidak ada riwayat percakapan sebelumnya."
@@ -2688,6 +2782,7 @@ class RagPipeline:
 
         retrieval_query = _build_contextual_retrieval_query(question, history)
         intent = _classify_question(retrieval_query)
+        retrieval_query = _augment_retrieval_query(retrieval_query, intent)
 
         if _is_out_of_scope_question(question):
             answer = (
@@ -2718,6 +2813,7 @@ class RagPipeline:
             )
 
         results = self._retrieve_results(retrieval_query, max(self.settings.top_k, 8))
+        results = _prioritize_results_for_intent(results, intent)
         relevant = [
             result for result in results
             if result.score >= self.settings.similarity_threshold

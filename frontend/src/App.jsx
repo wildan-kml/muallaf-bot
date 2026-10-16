@@ -171,6 +171,7 @@ function PasswordInput({ visibilityLabel = 'kata sandi', ...inputProps }) {
       <button
         className="password-visibility-toggle"
         type="button"
+        disabled={inputProps.disabled}
         onClick={() => setIsVisible((current) => !current)}
         aria-label={actionLabel}
         aria-pressed={isVisible}
@@ -393,6 +394,7 @@ function BotPage({ auth, route, onNavigate, onLogout, onAccountUpdated }) {
   const [sessions, setSessions] = useState([]);
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [historyStatus, setHistoryStatus] = useState(isGuest ? '' : 'Memuat riwayat...');
+  const [isLoadingConversation, setIsLoadingConversation] = useState(!isGuest);
   const [question, setQuestion] = useState('');
   const [enteringUserMessageId, setEnteringUserMessageId] = useState(null);
   const [isThinking, setIsThinking] = useState(() => Boolean(readPendingRequest()));
@@ -469,9 +471,14 @@ function BotPage({ auth, route, onNavigate, onLogout, onAccountUpdated }) {
           setIsOpeningPromptPending(false);
         }
         setHistoryStatus('');
+        setIsLoadingConversation(false);
         return;
       }
-      if (route.name === 'account') return;
+      if (route.name === 'account') {
+        setIsLoadingConversation(false);
+        return;
+      }
+      setIsLoadingConversation(true);
       try {
         const result = await listSessions(auth.token);
         const nextSessions = result.sessions || [];
@@ -486,6 +493,7 @@ function BotPage({ auth, route, onNavigate, onLogout, onAccountUpdated }) {
           setIsOpeningIntroPending(showIntroduction);
           setIsOpeningPromptPending(!showIntroduction);
           setHistoryStatus('');
+          setIsLoadingConversation(false);
           if (route.sessionId) onNavigate('/chat', { replace: true });
           return;
         }
@@ -499,9 +507,11 @@ function BotPage({ auth, route, onNavigate, onLogout, onAccountUpdated }) {
           setIsOpeningPromptPending(false);
         }
         setHistoryStatus('');
+        setIsLoadingConversation(false);
       } catch (error) {
         if (error?.status === 401) onLogout();
         else setHistoryStatus(error?.message || 'Riwayat belum dapat dimuat.');
+        if (active) setIsLoadingConversation(false);
       }
     }
     loadHistory();
@@ -579,6 +589,7 @@ function BotPage({ auth, route, onNavigate, onLogout, onAccountUpdated }) {
     if (!sessionId || sessionId === currentSessionId || conversationBusy) return;
     setSessionMenuId(null);
     setHistoryStatus('Memuat percakapan...');
+    setIsLoadingConversation(true);
     onNavigate(chatPath(sessionId));
     if (window.matchMedia('(max-width: 940px)').matches) setSidebarOpen(false);
   }
@@ -938,7 +949,7 @@ function BotPage({ auth, route, onNavigate, onLogout, onAccountUpdated }) {
     }
   }
 
-  const conversationBusy = isThinking || isOpeningIntroPending || isOpeningPromptPending;
+  const conversationBusy = isLoadingConversation || isThinking || isOpeningIntroPending || isOpeningPromptPending;
   const visibleSessions = sessions.filter((session) => Number(session.message_count) > 0 && session.title?.trim());
 
   function requestLogout() {
@@ -1075,7 +1086,10 @@ function BotPage({ auth, route, onNavigate, onLogout, onAccountUpdated }) {
           </div>
         </aside>
 
-        <section className="chat-shell">
+        <section
+          className={`chat-shell ${isLoadingConversation ? 'is-loading-conversation' : ''}`}
+          aria-busy={isLoadingConversation}
+        >
           <div className="chat-list" ref={listRef}>
             {messages.map((message, index) => {
               const messageDay = messageDateKey(message);
@@ -1171,6 +1185,13 @@ function BotPage({ auth, route, onNavigate, onLogout, onAccountUpdated }) {
               </button>
             </div>
           </footer>
+          {isLoadingConversation && (
+            <div className="conversation-loading-overlay" role="status" aria-live="polite">
+              <span className="loading-spinner conversation-loading-spinner" aria-hidden="true" />
+              <strong>Memuat percakapan...</strong>
+              <span>Mohon tunggu sebentar</span>
+            </div>
+          )}
         </section>
       </section>
       {showAccountSettings && !isGuest && (
@@ -1484,30 +1505,30 @@ function AuthScreen({ mode, onModeChange, onAuthenticated, onContinueAsGuest }) 
 
   return (
     <main className="auth-page">
-      <section className="auth-card">
+      <section className={`auth-card ${busy ? 'is-busy' : ''}`} aria-busy={busy || !security.ready}>
         <img className="auth-logo" src="/imc-mask-logo.jpg" alt="Logo International Muallaf Center Masjid Agung Sunda Kelapa" />
         <h1>Muallaf Bot</h1>
         <div className={`auth-tabs is-${mode}`} role="tablist">
-          <button type="button" className={mode === 'login' ? 'is-active' : ''} onClick={() => { onModeChange('login'); setStatus(''); }}>Masuk</button>
-          <button type="button" className={mode === 'register' ? 'is-active' : ''} onClick={() => { onModeChange('register'); setStatus(''); }}>Daftar</button>
+          <button type="button" disabled={busy} className={mode === 'login' ? 'is-active' : ''} onClick={() => { onModeChange('login'); setStatus(''); }}>Masuk</button>
+          <button type="button" disabled={busy} className={mode === 'register' ? 'is-active' : ''} onClick={() => { onModeChange('register'); setStatus(''); }}>Daftar</button>
         </div>
         <form key={mode} className={`auth-form is-${mode}`} onSubmit={submit}>
           {mode === 'register' && (
             <label>Nama lengkap
-              <input required minLength={2} maxLength={120} autoComplete="name" placeholder="Contoh: Muhammad Wildan" value={form.displayName} onInvalid={(event) => setAuthValidationMessage(event, 'Nama lengkap', 2)} onInput={clearValidationMessage} onChange={(event) => setForm((current) => ({ ...current, displayName: event.target.value }))} />
+              <input disabled={busy} required minLength={2} maxLength={120} autoComplete="name" placeholder="Contoh: Muhammad Wildan" value={form.displayName} onInvalid={(event) => setAuthValidationMessage(event, 'Nama lengkap', 2)} onInput={clearValidationMessage} onChange={(event) => setForm((current) => ({ ...current, displayName: event.target.value }))} />
             </label>
           )}
           <label>{mode === 'login' ? 'Nama lengkap atau nama pengguna' : 'Nama pengguna'}
-            <input required minLength={mode === 'login' ? 1 : 3} maxLength={mode === 'login' ? 120 : 100} autoComplete="username" pattern={mode === 'login' ? undefined : '[a-zA-Z0-9_.-]+'} placeholder={mode === 'login' ? 'Masukkan nama lengkap atau nama pengguna' : 'Contoh: wildan_kamil'} value={form.username} onInvalid={(event) => setAuthValidationMessage(event, mode === 'login' ? 'Nama lengkap atau nama pengguna' : 'Nama pengguna', mode === 'login' ? 1 : 3, 'Nama pengguna hanya boleh berisi huruf, angka, titik, garis bawah, atau tanda hubung.')} onInput={clearValidationMessage} onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))} />
+            <input disabled={busy} required minLength={mode === 'login' ? 1 : 3} maxLength={mode === 'login' ? 120 : 100} autoComplete="username" pattern={mode === 'login' ? undefined : '[a-zA-Z0-9_.-]+'} placeholder={mode === 'login' ? 'Masukkan nama lengkap atau nama pengguna' : 'Contoh: wildan_kamil'} value={form.username} onInvalid={(event) => setAuthValidationMessage(event, mode === 'login' ? 'Nama lengkap atau nama pengguna' : 'Nama pengguna', mode === 'login' ? 1 : 3, 'Nama pengguna hanya boleh berisi huruf, angka, titik, garis bawah, atau tanda hubung.')} onInput={clearValidationMessage} onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))} />
           </label>
           <label>Kata sandi
-            <PasswordInput required minLength={mode === 'register' ? MINIMUM_PASSWORD_LENGTH : 1} maxLength={128} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder={mode === 'login' ? 'Masukkan kata sandi' : 'Minimal 8 karakter'} value={form.password} onInvalid={(event) => setAuthValidationMessage(event, 'Kata sandi', mode === 'register' ? MINIMUM_PASSWORD_LENGTH : 1)} onInput={clearValidationMessage} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} />
+            <PasswordInput disabled={busy} required minLength={mode === 'register' ? MINIMUM_PASSWORD_LENGTH : 1} maxLength={128} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder={mode === 'login' ? 'Masukkan kata sandi' : 'Minimal 8 karakter'} value={form.password} onInvalid={(event) => setAuthValidationMessage(event, 'Kata sandi', mode === 'register' ? MINIMUM_PASSWORD_LENGTH : 1)} onInput={clearValidationMessage} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} />
             {mode === 'register' && <small className="password-help">Minimal 8 karakter. Boleh menggunakan huruf, angka, atau simbol tanpa syarat kombinasi tertentu.</small>}
           </label>
           {mode === 'register' && (
             <label className="privacy-consent">
-              <input required type="checkbox" checked={form.privacyAccepted} onInvalid={(event) => event.currentTarget.setCustomValidity('Centang persetujuan ketentuan privasi untuk melanjutkan.')} onInput={clearValidationMessage} onChange={(event) => { clearValidationMessage(event); setForm((current) => ({ ...current, privacyAccepted: event.target.checked })); }} />
-              <span>Saya telah membaca dan menyetujui <button type="button" onClick={showPrivacy}>ketentuan privasi</button>.</span>
+              <input disabled={busy} required type="checkbox" checked={form.privacyAccepted} onInvalid={(event) => event.currentTarget.setCustomValidity('Centang persetujuan ketentuan privasi untuk melanjutkan.')} onInput={clearValidationMessage} onChange={(event) => { clearValidationMessage(event); setForm((current) => ({ ...current, privacyAccepted: event.target.checked })); }} />
+              <span>Saya telah membaca dan menyetujui <button type="button" disabled={busy} onClick={showPrivacy}>ketentuan privasi</button>.</span>
             </label>
           )}
           {mode === 'register' && security.enabled && !humanVerified && (
@@ -1521,14 +1542,23 @@ function AuthScreen({ mode, onModeChange, onAuthenticated, onContinueAsGuest }) 
               {status}
             </p>
           )}
-          <button className="auth-submit" type="submit" disabled={busy || !security.ready || (mode === 'register' && security.enabled && !humanVerified)}>{busy ? 'Memproses...' : mode === 'login' ? 'Masuk' : 'Buat akun'}</button>
+          <button className="auth-submit" type="submit" disabled={busy || !security.ready || (mode === 'register' && security.enabled && !humanVerified)}>
+            {(busy || !security.ready) && <span className="loading-spinner auth-loading-spinner" aria-hidden="true" />}
+            <span>
+              {!security.ready
+                ? 'Menyiapkan keamanan...'
+                : busy
+                  ? mode === 'login' ? 'Sedang masuk...' : 'Membuat akun...'
+                  : mode === 'login' ? 'Masuk' : 'Buat akun'}
+            </span>
+          </button>
         </form>
         <div className="guest-access">
           <span>atau</span>
           {mode === 'login' && security.enabled && !humanVerified && (
             <TurnstileVerification siteKey={security.siteKey} onToken={handleTurnstileToken} onError={handleTurnstileError} />
           )}
-          <button type="button" disabled={!security.ready || (security.enabled && !humanVerified)} onClick={onContinueAsGuest}>Lanjut sebagai tamu</button>
+          <button type="button" disabled={busy || !security.ready || (security.enabled && !humanVerified)} onClick={onContinueAsGuest}>Lanjut sebagai tamu</button>
         </div>
       </section>
       {privacy && (

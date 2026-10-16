@@ -259,6 +259,10 @@ a:focus-visible {
 .auth-status { margin: 0; padding: 10px 12px; border-radius: 8px; background: #fff0f0; color: #922; font-size: 13px; text-align: left; }
 .auth-status.is-success { border: 1px solid #b9dfca; background: #edf9f2; color: var(--green-800); }
 .auth-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
   padding: 12px 18px;
   border: 0;
   border-radius: 9px;
@@ -274,6 +278,23 @@ a:focus-visible {
   transform: translateY(-1px);
 }
 .auth-submit:disabled { cursor: wait; opacity: .65; }
+.loading-spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  border: 3px solid rgba(8, 120, 69, 0.2);
+  border-top-color: var(--green-700);
+  border-radius: 50%;
+  animation: control-spin 720ms linear infinite;
+}
+.auth-loading-spinner {
+  width: 17px;
+  height: 17px;
+  border-width: 2px;
+  border-color: rgba(255, 255, 255, 0.38);
+  border-top-color: var(--white);
+}
 .guest-access { display: grid; justify-items: center; gap: 9px; margin-top: 20px; text-align: center; }
 .guest-access > span { display: flex; align-items: center; width: 100%; gap: 10px; color: var(--muted); font-size: 12px; }
 .guest-access > span::before,
@@ -726,6 +747,7 @@ a:focus-visible {
 }
 
 .chat-shell {
+  position: relative;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   min-width: 0;
@@ -735,6 +757,53 @@ a:focus-visible {
   border: 1px solid var(--line);
   border-radius: 18px;
   background: var(--white);
+}
+
+.chat-shell.is-loading-conversation .chat-list,
+.chat-shell.is-loading-conversation .chat-footer {
+  pointer-events: none;
+  user-select: none;
+  opacity: 0.38;
+  filter: saturate(0.7);
+  transition: opacity 180ms ease, filter 180ms ease;
+}
+
+.conversation-loading-overlay {
+  position: absolute;
+  z-index: 12;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border-radius: inherit;
+  background: rgba(250, 253, 251, 0.74);
+  color: var(--green-900);
+  text-align: center;
+  backdrop-filter: blur(2px);
+  animation: conversation-loading-enter 180ms ease-out both;
+}
+
+.conversation-loading-overlay strong {
+  font-size: 15px;
+}
+
+.conversation-loading-overlay > span:last-child {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.conversation-loading-spinner {
+  width: 34px;
+  height: 34px;
+  border-width: 4px;
+  box-shadow: 0 5px 16px rgba(0, 68, 33, 0.12);
+}
+
+@keyframes conversation-loading-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .date-divider {

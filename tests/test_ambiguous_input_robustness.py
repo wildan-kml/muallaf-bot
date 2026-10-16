@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 from app.preprocessing import TextChunk
 from app.rag_pipeline import (
     RagPipeline,
+    _classify_question,
     is_ambiguous_or_incomplete_query,
     normalize_user_query,
 )
@@ -86,6 +87,67 @@ def make_pipeline(top_k: int = 4) -> tuple[RagPipeline, FakeVectorStore]:
 
 
 class RobustnessAndGuardrailHardeningTests(unittest.TestCase):
+    def test_basic_foundations_question_has_specific_intent(self) -> None:
+        self.assertEqual(
+            _classify_question("Apa saja hal dasar yang perlu dipahami calon mualaf?"),
+            "mualaf_basic_foundations",
+        )
+
+    def test_basic_foundations_answer_ignores_unrelated_mualaf_definition(self) -> None:
+        pipeline, vector_store = make_pipeline()
+        unrelated = TextChunk(
+            chunk_id="unrelated_definition",
+            content=(
+                "Definisi mualaf menurut seorang ulama dan pembahasan perwalian "
+                "serta pengasuhan anak dalam keluarga berbeda agama."
+            ),
+            document_title="Fiqih Mualaf",
+            page_number=12,
+            file_name="Fiqih Mualaf.pdf",
+        )
+        foundations = TextChunk(
+            chunk_id="basic_foundations",
+            content=(
+                "Aqidah yang perlu diketahui meliputi Islam, Iman, dan Ihsan. "
+                "Rukun Islam terdiri dari syahadat, shalat, zakat, puasa, dan haji. "
+                "Rukun iman terdiri dari enam pokok keyakinan."
+            ),
+            document_title="Fiqih Mualaf",
+            page_number=18,
+            file_name="Fiqih Mualaf.pdf",
+        )
+        vector_store.results = [
+            RetrievalResult(chunk=unrelated, score=0.97),
+            RetrievalResult(chunk=foundations, score=0.82),
+        ]
+
+        response = pipeline.answer("Apa saja hal dasar yang perlu dipahami calon mualaf?")
+
+        self.assertEqual(response.mode, "rag_guided")
+        self.assertIn("akidah", response.answer.lower())
+        self.assertIn("rukun islam", response.answer.lower())
+        self.assertIn("ibadah harian", response.answer.lower())
+        self.assertNotIn("perwalian", response.answer.lower())
+        self.assertEqual([source.chunk_id for source in response.sources], ["basic_foundations"])
+        self.assertIn("rukun islam", vector_store.queries[0][0].lower())
+
+    def test_basic_foundations_answer_does_not_cite_unrelated_result(self) -> None:
+        pipeline, vector_store = make_pipeline()
+        unrelated = TextChunk(
+            chunk_id="unrelated_guardianship",
+            content="Pembahasan perwalian dan pengasuhan anak dari keluarga berbeda agama.",
+            document_title="Fiqih Mualaf",
+            page_number=99,
+            file_name="Fiqih Mualaf.pdf",
+        )
+        vector_store.results = [RetrievalResult(chunk=unrelated, score=0.96)]
+
+        response = pipeline.answer("Apa saja hal dasar yang perlu dipahami calon mualaf?")
+
+        self.assertEqual(response.mode, "rag_guided")
+        self.assertEqual(response.sources, [])
+        self.assertNotIn("perwalian", response.answer.lower())
+
     def test_daily_slang_human_handoff_does_not_enter_retrieval(self) -> None:
         pipeline, vector_store = make_pipeline()
 
