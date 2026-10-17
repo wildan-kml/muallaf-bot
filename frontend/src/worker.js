@@ -1,6 +1,6 @@
 const MAX_API_BODY_BYTES = 65_536;
 const HUMAN_COOKIE = 'muallaf_human';
-const HUMAN_SESSION_SECONDS = 60 * 60;
+const HUMAN_SESSION_SECONDS = 24 * 60 * 60;
 
 const SECURITY_HEADERS = {
   'Content-Security-Policy': "default-src 'self'; base-uri 'self'; connect-src 'self' https://challenges.cloudflare.com; font-src 'self'; form-action 'self'; frame-ancestors 'none'; frame-src 'self' https://challenges.cloudflare.com; img-src 'self' data:; object-src 'none'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; upgrade-insecure-requests",
@@ -43,15 +43,28 @@ async function createHumanCookie(secret) {
   return `${payload}.${await hmac(payload, secret)}`;
 }
 
-async function hasValidHumanCookie(request, secret) {
-  if (!secret) return false;
+async function getHumanSessionStatus(request, secret) {
+  if (!secret) return { verified: false, reverify_required: true, expires_in: 0 };
   const cookieHeader = request.headers.get('cookie') || '';
   const cookie = cookieHeader.split(';').map((item) => item.trim()).find((item) => item.startsWith(`${HUMAN_COOKIE}=`));
-  if (!cookie) return false;
+  if (!cookie) return { verified: false, reverify_required: true, expires_in: 0 };
   const value = cookie.slice(HUMAN_COOKIE.length + 1);
   const [expiresAt, nonce, signature] = value.split('.');
-  if (!expiresAt || !nonce || !signature || Number(expiresAt) <= Math.floor(Date.now() / 1000)) return false;
-  return safeEqual(signature, await hmac(`${expiresAt}.${nonce}`, secret));
+  const now = Math.floor(Date.now() / 1000);
+  const numericExpiresAt = Number(expiresAt);
+  if (!expiresAt || !nonce || !signature || !Number.isFinite(numericExpiresAt) || numericExpiresAt <= now) {
+    return { verified: false, reverify_required: true, expires_in: 0 };
+  }
+  const verified = safeEqual(signature, await hmac(`${expiresAt}.${nonce}`, secret));
+  return {
+    verified,
+    reverify_required: !verified,
+    expires_in: verified ? Math.max(0, numericExpiresAt - now) : 0,
+  };
+}
+
+async function hasValidHumanCookie(request, secret) {
+  return (await getHumanSessionStatus(request, secret)).verified;
 }
 
 async function verifyTurnstile(request, env) {
@@ -188,7 +201,7 @@ async function handleRequest(request, env) {
     return jsonResponse({ enabled: Boolean(env.TURNSTILE_SITE_KEY), site_key: env.TURNSTILE_SITE_KEY || null });
   }
   if (url.pathname === '/api/security/status' && request.method === 'GET') {
-    return jsonResponse({ verified: await hasValidHumanCookie(request, env.HUMAN_SESSION_SECRET) });
+    return jsonResponse(await getHumanSessionStatus(request, env.HUMAN_SESSION_SECRET));
   }
   if (url.pathname === '/api/security/verify' && request.method === 'POST') {
     try {

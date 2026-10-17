@@ -1591,7 +1591,7 @@ function AuthScreen({ mode, onModeChange, onAuthenticated, onContinueAsGuest }) 
                   <li><strong>Data akun</strong>, yaitu nama lengkap, nama pengguna, dan kata sandi yang telah diubah menjadi hash kriptografis.</li>
                   <li><strong>Data percakapan</strong>, yaitu judul sesi, pertanyaan, jawaban chatbot, sumber rujukan, serta waktu aktivitas.</li>
                   <li><strong>Data persetujuan</strong>, yaitu catatan bahwa pengguna telah menyetujui ketentuan privasi saat pendaftaran.</li>
-                  <li><strong>Data teknis keamanan sementara</strong>, seperti alamat jaringan, token Turnstile, dan cookie keamanan satu jam yang diproses untuk membatasi spam, serangan otomatis, dan penggunaan layanan secara berlebihan.</li>
+                  <li><strong>Data teknis keamanan sementara</strong>, seperti alamat jaringan, token Turnstile, dan cookie keamanan maksimal 24 jam yang diproses untuk membatasi spam, serangan otomatis, dan penggunaan layanan secara berlebihan.</li>
                   <li><strong>Data umpan balik opsional</strong>, termasuk identitas atau alamat surel hanya apabila pengguna memilih untuk mengisinya.</li>
                 </ul>
                 <p>
