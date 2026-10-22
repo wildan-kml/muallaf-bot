@@ -20,6 +20,7 @@ EMBEDDING_MODEL = "intfloat/multilingual-e5-small"
 app = modal.App("muallaf-bot")
 runtime_secret = modal.Secret.from_name("muallaf-bot-secrets")
 generated_secret = modal.Secret.from_name("muallaf-bot-generated")
+gemini_secret = modal.Secret.from_name("muallaf-bot-gemini")
 
 # Install CPU-only PyTorch first so sentence-transformers does not pull a much
 # larger accelerator runtime. The model is cached while the image is built,
@@ -45,7 +46,9 @@ runtime_image = (
             "VECTOR_DB_TYPE": "pgvector",
             "RAG_ENGINE": "langchain",
             "LLM_PROVIDER": "auto",
-            "GEMINI_MODEL": "gemini-2.5-flash",
+            # Keep this aligned with backend/app/config.py and .env.example.
+            # The former 2.5 model is no longer available for this API account.
+            "GEMINI_MODEL": "gemini-3.5-flash-lite",
             "CHAT_RETENTION_DAYS": "30",
             "ALLOW_REGISTRATION": "true",
             "DEBUG_ENDPOINT_ENABLED": "false",
@@ -75,7 +78,7 @@ runtime_image = (
 
 @app.function(
     image=runtime_image,
-    secrets=[runtime_secret, generated_secret],
+    secrets=[runtime_secret, generated_secret, gemini_secret],
     cpu=2,
     memory=4096,
     timeout=1800,
@@ -92,7 +95,7 @@ def build_knowledge_base() -> None:
 
 @app.function(
     image=runtime_image,
-    secrets=[runtime_secret, generated_secret],
+    secrets=[runtime_secret, generated_secret, gemini_secret],
     cpu=1,
     memory=3072,
     timeout=120,

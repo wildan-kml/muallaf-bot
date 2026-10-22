@@ -119,7 +119,7 @@ gcloud run deploy muallaf-bot-api \
   --image="$IMAGE" --region="$REGION" --allow-unauthenticated \
   --cpu=1 --memory=2Gi --concurrency=4 --min-instances=0 --max-instances=1 \
   --timeout=300 --cpu-throttling \
-  --set-env-vars="APP_ENV=production,VECTOR_DB_TYPE=pgvector,RAG_ENGINE=langchain,LLM_PROVIDER=auto,GEMINI_MODEL=gemini-2.5-flash,CHAT_RETENTION_DAYS=30,ALLOW_REGISTRATION=true,DEBUG_ENDPOINT_ENABLED=false,TRUST_PROXY_HEADERS=true,FRONTEND_ORIGIN=$FRONTEND_ORIGIN,CORS_ORIGINS=$FRONTEND_ORIGIN" \
+  --set-env-vars="APP_ENV=production,VECTOR_DB_TYPE=pgvector,RAG_ENGINE=langchain,LLM_PROVIDER=auto,GEMINI_MODEL=gemini-3.5-flash-lite,CHAT_RETENTION_DAYS=30,ALLOW_REGISTRATION=true,DEBUG_ENDPOINT_ENABLED=false,TRUST_PROXY_HEADERS=true,FRONTEND_ORIGIN=$FRONTEND_ORIGIN,CORS_ORIGINS=$FRONTEND_ORIGIN" \
   --set-secrets="DATABASE_URL=muallaf-database-url:latest,JWT_SECRET=muallaf-jwt-secret:latest,GEMINI_API_KEY=muallaf-gemini-key:latest"
 
 export API_URL="$(gcloud run services describe muallaf-bot-api \

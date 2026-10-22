@@ -85,11 +85,40 @@ Tambahkan atau ganti baris berikut tanpa menghapus secret lain:
 ORIGIN_SHARED_SECRET=<nilai $originSecret>
 ```
 
-Terbitkan ulang seluruh isi file sebagai Modal Secret:
+Jika memang perlu memperbarui secret runtime, terbitkan ulang seluruh isi file
+sebagai Modal Secret. Jangan jalankan perintah ini dengan file yang tidak memuat
+semua nilai runtime yang sebelumnya tersimpan, karena `--force` mengganti secret:
 
 ```powershell
 modal secret create muallaf-bot-secrets --from-dotenv deploy/modal-secrets.env --force
 ```
+
+Simpan `GEMINI_API_KEY` dalam secret Modal terpisah agar pembaruan model tidak
+menimpa secret database, origin, atau SMTP. Dari root repository, jalankan:
+
+```powershell
+$geminiLine = Get-Content backend/.env |
+  Where-Object { $_ -match '^GEMINI_API_KEY=' } |
+  Select-Object -First 1
+
+if (-not $geminiLine) {
+  throw 'GEMINI_API_KEY tidak ditemukan di backend/.env'
+}
+
+$geminiKey = $geminiLine.Substring('GEMINI_API_KEY='.Length).Trim()
+if (-not $geminiKey) {
+  throw 'GEMINI_API_KEY kosong'
+}
+
+& .\backend\.venv\Scripts\python.exe -m modal secret create `
+  muallaf-bot-gemini "GEMINI_API_KEY=$geminiKey" --force
+
+Remove-Variable geminiKey, geminiLine
+```
+
+`GEMINI_API_KEY` wajib tersedia agar `/api/chat/model-status` menghasilkan
+`llm_ready: true`. Jangan menampilkan nilainya melalui chat, menulisnya ke
+dokumentasi, atau memasukkannya ke Git.
 
 Pastikan file tetap tidak tercatat Git:
 
@@ -164,6 +193,10 @@ cd ..
 modal deploy deploy/modal_app.py
 ```
 
+`deploy/modal_app.py` menetapkan `GEMINI_MODEL=gemini-3.5-flash-lite`.
+Jangan menambahkan `GEMINI_MODEL=gemini-2.5-flash` ke
+`deploy/modal-secrets.env`, karena nilai secret dapat menimpa konfigurasi image.
+
 Terakhir commit dan push agar deployment Git selanjutnya konsisten:
 
 ```powershell
@@ -179,6 +212,25 @@ git push origin master
 3. Pastikan login akun lama tetap berfungsi.
 4. Coba URL Modal langsung tanpa header. Hasil yang benar adalah `401` dari
    Modal Proxy Auth dan tidak ada container baru pada log Modal.
+5. Verifikasi model melalui domain Cloudflare:
+
+```powershell
+$status = Invoke-RestMethod `
+  -Uri "https://muallaf-bot.mwildankamil.workers.dev/api/chat/model-status"
+$status | ConvertTo-Json -Depth 5
+```
+
+Hasil yang benar setelah deploy:
+
+```text
+llm_model     : auto: gemini-3.5-flash-lite -> deterministic extractive fallback
+llm_ready     : true
+langchain_ready: true
+```
+
+Jika `llm_ready` tetap `false`, periksa bahwa `GEMINI_API_KEY` masih aktif di
+Modal Secret `muallaf-bot-secrets`, lalu deploy ulang. Jangan memasukkan API key
+ke Git atau ke konfigurasi Cloudflare frontend.
 5. Kirim pertanyaan berulang lebih dari batas. Hasil yang benar adalah `429`.
 6. Periksa Network browser: request chat harus menuju domain Cloudflare
    `/api/chat`, bukan `modal.run`.

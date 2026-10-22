@@ -192,6 +192,26 @@ EXPLICIT_FALLBACK_PATTERNS = {
 }
 
 OUT_OF_SCOPE_PATTERNS = {
+    "kuliner_umum": {
+        "resep membuat rendang",
+        "resep rendang",
+        "cara membuat rendang",
+    },
+    "olahraga_terkini": {
+        "skor pertandingan sepak bola",
+        "skor sepak bola",
+        "hasil pertandingan sepak bola",
+    },
+    "tugas_akademik_non_keislaman": {
+        "soal kalkulus",
+        "kalkulus integral",
+        "selesaikan integral",
+    },
+    "otomotif": {
+        "mesin mobil",
+        "mobil cepat panas",
+        "memperbaiki mesin mobil",
+    },
     "cuaca_dan_ramalan": {
         "cuaca",
         "ramalan cuaca",
@@ -610,6 +630,11 @@ PERSONAL_LEGAL_OR_RELIGIOUS_TERMS = {
     "pernikahan saya masih sah",
     "nikah saya masih sah",
     "apakah saya harus lapor polisi",
+    "apakah saya harus melapor kepada polisi",
+    "melapor kepada polisi",
+    "masalah hukum karena pilihan agama",
+    "tolong tentukan siapa yang benar",
+    "tentukan siapa yang benar",
     "kasus hukum saya",
     "dokumen hukum saya",
     "menggugurkan anak",
@@ -938,7 +963,8 @@ def _classify_guardrail(question: str) -> str | None:
 def _guardrail_response(category: str) -> ChatResponse:
     if category == "immediate_safety_or_crisis":
         answer = (
-            "Keselamatan Anda yang paling utama. Jika Anda sedang dalam bahaya, "
+            "Keselamatan Anda yang paling utama. Saya bukan layanan darurat atau konselor profesional. "
+            "Jika Anda sedang dalam bahaya, "
             "segera menjauh ke tempat yang lebih aman bila memungkinkan dan hubungi "
             "layanan darurat setempat, pihak keamanan, atau orang tepercaya di sekitar Anda sekarang. "
             "Jika muncul pikiran untuk menyakiti diri atau mengakhiri hidup, jangan hadapi sendirian; "
