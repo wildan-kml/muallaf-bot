@@ -8,7 +8,7 @@ pydantic>=2.7.0
 python-dotenv>=1.0.1
 psycopg[binary]>=3.2.3
 
-pymupdf>=1.24.9
+pymupdf>=2.0
 pdfplumber>=0.11.4
 sentence-transformers>=3.0.1
 numpy>=1.26.4
