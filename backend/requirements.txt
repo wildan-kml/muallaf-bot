@@ -22,5 +22,5 @@ langchain-core>=0.3.0
 langchain-community>=0.3.0
 langchain-google-genai>=2.0.0
 langchain-groq>=0.3.0
-langchain-ollama>=0.2.0
+langchain-ollama>=1.1.0
 faiss-cpu>=1.8.0
