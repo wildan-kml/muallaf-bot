@@ -237,6 +237,17 @@ menolak laporan final jika dataset kurang dari 100 kasus. Dataset bawaan hanya
 contoh smoke test; jalankan dengan `--minimum-cases 1` untuk memeriksa mekanisme,
 lalu perluas dan validasi labelnya bersama pembina sebelum dipakai dalam skripsi.
 
+## Keamanan dan lisensi
+
+Laporkan kerentanan secara privat mengikuti [`SECURITY.md`](SECURITY.md). Jangan
+memasukkan API key, password, connection string, token, atau data pengguna ke
+issue, pull request, log, dan commit.
+
+Kode sumber dan dokumentasi proyek tersedia berdasarkan [Lisensi MIT](LICENSE).
+PDF knowledge base, logo, identitas organisasi, serta materi pihak ketiga tidak
+dilisensikan ulang berdasarkan MIT. Rincian pengecualian tersedia di
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
 ## Publikasi
 
 Panduan deployment manual gratis dengan Cloudflare Pages, Oracle Cloud, Neon,
