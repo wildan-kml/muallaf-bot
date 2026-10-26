@@ -4,6 +4,7 @@ from typing import Any
 from .config import Settings
 from .rag_pipeline import (
     RagPipeline,
+    _claims_context_is_insufficient,
     _format_chat_history,
     _make_prompt,
     _without_unverified_arabic,
@@ -109,6 +110,12 @@ class LangChainRagPipeline(RagPipeline):
     ) -> str | None:
         for provider in self._generation_providers():
             generated = self._try_generate_with_provider(provider, question, results, history=history)
+            if generated and _claims_context_is_insufficient(generated):
+                logger.warning(
+                    "LangChain %s returned an over-conservative context refusal; trying the next provider.",
+                    provider,
+                )
+                continue
             if generated:
                 return generated
         return None
@@ -179,6 +186,16 @@ Anda adalah Muallaf Bot IMC-MASK untuk edukasi dasar mualaf.
 Jawab hanya berdasarkan konteks dokumen di bawah.
 Gunakan bahasa Indonesia yang lembut, ringkas, dan mudah dipahami.
 Jawab langsung, tanpa awalan "Berdasarkan dokumen rujukan yang tersedia".
+Batasi jawaban sekitar 80–180 kata kecuali pengguna meminta penjelasan lebih rinci.
+Gunakan bahasa Indonesia sepenuhnya; jangan menyisipkan kata penghubung bahasa Inggris.
+Jika pengguna meminta tata cara, urutan, langkah, persiapan, atau beberapa contoh, gunakan daftar bernomor atau berpoin dengan satu gagasan per butir; jangan menulisnya sebagai paragraf panjang.
+Pastikan jawaban benar-benar menjawab pertanyaan terbaru. Jika konteks membahas topik lain, jangan gunakan bagian tersebut untuk mengarang jawaban.
+Sebelum menjawab, periksa seluruh blok konteks dan gunakan fakta yang secara langsung mendukung pertanyaan, meskipun fakta tersebut tersebar di beberapa blok.
+Jangan mengatakan informasi tidak tersedia atau konteks tidak cukup jika setidaknya satu blok secara eksplisit memuat jawaban yang diminta.
+Untuk pertanyaan utang-piutang, konteks tentang mengambil harta orang lain dengan niat mengembalikan, amanah, dan menunaikan janji adalah bukti yang langsung relevan; rangkum prinsip tersebut dan jangan menyatakan topiknya tidak dibahas.
+Jika konteks hanya mendukung sebagian jawaban, sampaikan bagian yang didukung terlebih dahulu lalu jelaskan secara spesifik bagian apa yang belum tersedia; jangan menolak seluruh pertanyaan.
+Pertahankan daftar faktual sebagaimana tertulis dalam konteks. Jangan memindahkan, menambah, mengurangi, atau mengganti anggota rukun, syarat, urutan, nama, angka, dan kategori.
+Jika beberapa potongan konteks saling bertentangan atau tidak cukup untuk menyusun daftar lengkap, jelaskan keterbatasannya secara singkat; jangan menebak anggota yang hilang.
 Jangan membuat fatwa baru, jangan membahas kasus pribadi sensitif secara final.
 Jika konteks tidak cukup, arahkan pengguna untuk menghubungi pembina IMC-MASK.
 Jangan menyalin tabel, daftar hadir, daftar isi, atau baris dokumen administratif.
@@ -218,6 +235,22 @@ Jawaban:
 
     def _langchain_llm(self, provider: str | None = None):
         provider = provider or self.settings.llm_provider
+        if provider == "groq":
+            if not self.settings.groq_api_key:
+                raise RuntimeError("GROQ_API_KEY belum tersedia.")
+            from langchain_groq import ChatGroq
+
+            return ChatGroq(
+                model=self.settings.groq_model,
+                api_key=self.settings.groq_api_key,
+                temperature=0.2,
+                timeout=45,
+                max_retries=1,
+                max_tokens=700,
+                reasoning_effort="low",
+                reasoning_format="hidden",
+            )
+
         if provider == "gemini":
             if not self.settings.gemini_api_key:
                 raise RuntimeError("GEMINI_API_KEY belum tersedia.")
@@ -227,8 +260,8 @@ Jawaban:
                 model=self.settings.gemini_model,
                 google_api_key=self.settings.gemini_api_key,
                 temperature=0.2,
-                timeout=45,
-                max_retries=1,
+                timeout=15,
+                max_retries=0,
                 max_output_tokens=500,
             )
 

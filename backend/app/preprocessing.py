@@ -192,6 +192,31 @@ def build_imc_mask_website_chunks() -> list["TextChunk"]:
                 "Materi pembinaan meliputi Studi Islam Dasar, Fiqih Ibadah, Akhlak Karimah, dan Pengenalan Al-Qur'an."
             ),
         ),
+        TextChunk(
+            chunk_id="imc_mask_website_service_scope_c4",
+            document_title="Catatan Cakupan Knowledge Base Layanan IMC-MASK",
+            file_name=file_name,
+            page_number=1,
+            content=(
+                "Batas informasi layanan IMC-MASK: informasi publik yang dihimpun dalam knowledge base menjelaskan "
+                "alur ikrar syahadat, persyaratan dokumen, serta jadwal dan materi pembinaan. Informasi tersebut belum "
+                "menjelaskan secara eksplisit ketersediaan atau jadwal konsultasi sebelum ikrar syahadat dan sesi tanya "
+                "jawab langsung dengan pembina. Pengguna perlu menghubungi kanal resmi IMC-MASK untuk memastikan "
+                "ketersediaan, jadwal, dan mekanisme layanan tersebut."
+            ),
+        ),
+        TextChunk(
+            chunk_id="imc_mask_website_remote_visit_scope_c5",
+            document_title="Catatan Cakupan Knowledge Base Layanan IMC-MASK",
+            file_name=file_name,
+            page_number=1,
+            content=(
+                "Batas informasi layanan IMC-MASK: informasi publik yang dihimpun dalam knowledge base belum "
+                "menjelaskan secara eksplisit layanan arahan jarak jauh atau daring bagi pengguna di luar Jakarta, "
+                "maupun kebijakan kunjungan bersama teman yang tertarik mengenal Islam. Pengguna perlu menghubungi "
+                "kanal resmi IMC-MASK untuk memastikan pilihan pendampingan jarak jauh dan prosedur kunjungan sebelum datang."
+            ),
+        ),
     ]
     return chunks
 

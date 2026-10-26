@@ -951,10 +951,22 @@ def _is_personal_legal_or_religious_question(question: str) -> bool:
 
 
 def _classify_guardrail(question: str) -> str | None:
+    cleaned = question.lower()
     if _is_immediate_safety_or_crisis(question):
         return "immediate_safety_or_crisis"
     if _is_personal_legal_or_religious_question(question):
         return "personal_legal_or_religious"
+    # A first-person request asking whether the user is religiously obliged to
+    # change their identity is treated as a personal religious decision.  The
+    # educational topic remains answerable when phrased generally, but this
+    # personal yes/no obligation must stop before retrieval and be referred to
+    # a competent mentor.
+    if (
+        _contains_any(cleaned, {"nama saya", "saya wajib", "apakah saya wajib"})
+        and _contains_any(cleaned, {"ganti nama", "mengganti nama", "mengubah nama"})
+        and _contains_any(cleaned, {"masuk islam", "menjadi mualaf", "mualaf", "muallaf"})
+    ):
+        return "general_sensitive"
     if _is_sensitive(question) or _needs_human_guidance(question):
         return "general_sensitive"
     return None
@@ -1380,6 +1392,12 @@ def _classify_question(question: str) -> str | None:
     if _contains_any(cleaned, {"muamalah", "muamalat"}) and _asks_general_explanation(cleaned):
         return "muamalah_basic"
     if (
+        _contains_any(cleaned, {"utang", "hutang", "piutang"})
+        and _has_islamic_legal_context(cleaned)
+        and _asks_general_explanation(cleaned)
+    ):
+        return "debt_principles"
+    if (
         _contains_any(cleaned, {"jual beli", "transaksi", "akad", "utang", "hutang", "pinjam", "pinjaman", "riba"})
         and _has_islamic_legal_context(cleaned)
         and _asks_general_explanation(cleaned)
@@ -1655,20 +1673,20 @@ CURATED_ANSWERS = {
         "Jika keluarga ingin ikut mendampingi, sebaiknya konfirmasi terlebih dahulu kepada sekretariat IMC-MASK agar pelaksanaannya tertib."
     ),
     "imc_consult_before_conversion": (
-        "Boleh. Jika masih ragu atau ingin memahami Islam lebih dulu, calon muallaf dapat berkonsultasi dengan IMC-MASK sebelum ikrar syahadat. "
-        "Konsultasi awal membantu calon muallaf bertanya tentang makna syahadat, dasar keimanan, ibadah awal, dan proses pembinaan tanpa harus terburu-buru."
+        "Informasi publik yang tersedia belum menjelaskan secara eksplisit ketersediaan atau jadwal konsultasi sebelum ikrar syahadat. "
+        "Silakan hubungi kanal resmi IMC-MASK untuk menanyakan mekanisme konsultasi sebelum mengambil keputusan."
     ),
     "imc_direct_mentor": (
-        "Ya. IMC-MASK menyediakan pendampingan dan pembina untuk membantu muallaf atau calon muallaf bertanya secara langsung. "
-        "Pembina dapat membantu menjelaskan proses ikrar syahadat, pembinaan dasar, ibadah awal, dan kebutuhan pendampingan lanjutan."
+        "Informasi publik yang tersedia belum menjelaskan secara eksplisit ketersediaan sesi tanya jawab langsung dengan pembina. "
+        "Silakan hubungi kanal resmi IMC-MASK untuk memastikan ketersediaan, jadwal, dan mekanisme konsultasinya."
     ),
     "imc_remote_guidance": (
-        "Jika tinggal jauh dari Jakarta, kamu tetap bisa meminta arahan awal kepada IMC-MASK melalui kanal kontak resmi. "
-        "Untuk kebutuhan yang memerlukan kehadiran langsung, seperti penyerahan dokumen atau prosesi ikrar, jadwal dan teknisnya sebaiknya dikonfirmasi kepada sekretariat IMC-MASK."
+        "Informasi publik yang tersedia belum menjelaskan secara eksplisit layanan arahan jarak jauh atau daring bagi pengguna di luar Jakarta. "
+        "Silakan hubungi kanal resmi IMC-MASK untuk memastikan pilihan pendampingan jarak jauh dan kebutuhan kehadiran langsung."
     ),
     "imc_bring_friend": (
-        "Boleh. Teman yang tertarik mengenal Islam dapat diajak berkonsultasi atau datang ke IMC-MASK untuk memperoleh penjelasan awal. "
-        "Jika teman tersebut ingin mengikuti ikrar syahadat, ia dapat diarahkan mengikuti alur layanan IMC-MASK dan menyiapkan persyaratan yang dibutuhkan."
+        "Informasi publik yang tersedia belum menjelaskan secara eksplisit kebijakan kunjungan bersama teman yang tertarik mengenal Islam. "
+        "Silakan hubungi kanal resmi IMC-MASK terlebih dahulu untuk memastikan prosedur kunjungan sebelum datang."
     ),
     "imc_shalat_class": (
         "IMC-MASK memiliki pembinaan muallaf yang mencakup materi ibadah dasar, termasuk fiqih ibadah dan praktik wudhu serta shalat. "
@@ -1760,6 +1778,12 @@ CURATED_ANSWERS = {
         "Dalam kehidupan sehari-hari, muamalah menuntun seorang Muslim untuk bersikap jujur, adil, amanah, saling ridha, dan tidak merugikan orang lain.\n\n"
         "Contoh muamalah adalah jual beli, akad, utang-piutang, hibah atau hadiah, kerja sama, dan hubungan sosial dengan keluarga maupun masyarakat. "
         "Bagi mualaf, pembahasan ini dapat dipahami bertahap setelah dasar akidah dan ibadah, terutama agar interaksi sehari-hari tetap sesuai nilai Islam."
+    ),
+    "debt_principles": (
+        "Utang-piutang dalam Islam merupakan amanah yang wajib ditunaikan dengan jujur dan bertanggung jawab. "
+        "Orang yang berutang perlu berniat sungguh-sungguh untuk mengembalikan harta kepada pemiliknya, memenuhi "
+        "kesepakatan, dan tidak mengambil harta dengan niat merusak atau menghindari pembayaran. Agar hak dan "
+        "kewajiban kedua pihak jelas, jumlah utang, waktu pembayaran, dan kesepakatannya sebaiknya dicatat."
     ),
     "waris_hibah_wasiat": (
         "Secara ringkas, waris, hibah, dan wasiat sama-sama berkaitan dengan pemberian harta, tetapi waktunya berbeda. "
@@ -2556,8 +2580,16 @@ Anda adalah Muallaf Bot IMC-MASK untuk edukasi dasar mualaf.
 Jawab hanya berdasarkan konteks dokumen di bawah.
 Gunakan bahasa Indonesia yang lembut, ringkas, dan mudah dipahami.
 Jawab langsung, tanpa awalan "Berdasarkan dokumen rujukan yang tersedia".
+Batasi jawaban sekitar 80–180 kata kecuali pengguna meminta penjelasan lebih rinci.
+Gunakan bahasa Indonesia sepenuhnya; jangan menyisipkan kata penghubung bahasa Inggris.
 Jika pengguna meminta tata cara, urutan, langkah, persiapan, atau beberapa contoh, gunakan daftar bernomor atau berpoin dengan satu gagasan per butir; jangan menulisnya sebagai paragraf panjang.
 Pastikan jawaban benar-benar menjawab pertanyaan terbaru. Jika konteks membahas topik lain, jangan gunakan bagian tersebut untuk mengarang jawaban.
+Sebelum menjawab, periksa seluruh blok konteks dan gunakan fakta yang secara langsung mendukung pertanyaan, meskipun fakta tersebut tersebar di beberapa blok.
+Jangan mengatakan informasi tidak tersedia atau konteks tidak cukup jika setidaknya satu blok secara eksplisit memuat jawaban yang diminta.
+Untuk pertanyaan utang-piutang, konteks tentang mengambil harta orang lain dengan niat mengembalikan, amanah, dan menunaikan janji adalah bukti yang langsung relevan; rangkum prinsip tersebut dan jangan menyatakan topiknya tidak dibahas.
+Jika konteks hanya mendukung sebagian jawaban, sampaikan bagian yang didukung terlebih dahulu lalu jelaskan secara spesifik bagian apa yang belum tersedia; jangan menolak seluruh pertanyaan.
+Pertahankan daftar faktual sebagaimana tertulis dalam konteks. Jangan memindahkan, menambah, mengurangi, atau mengganti anggota rukun, syarat, urutan, nama, angka, dan kategori.
+Jika beberapa potongan konteks saling bertentangan atau tidak cukup untuk menyusun daftar lengkap, jelaskan keterbatasannya secara singkat; jangan menebak anggota yang hilang.
 Jangan membuat fatwa baru, jangan membahas kasus pribadi sensitif secara final.
 Jika konteks tidak cukup, arahkan pengguna untuk menghubungi pembina IMC-MASK.
 Jangan menyalin tabel, daftar hadir, daftar isi, atau baris dokumen administratif.
@@ -2624,6 +2656,34 @@ def _sanitize_normal_answer(answer: str) -> str:
     )
     cleaned = _normalize_sensitive_terms(cleaned)
     return _normalize_text(cleaned)
+
+
+def _claims_context_is_insufficient(answer: str) -> bool:
+    """Detect a broad model refusal when a grounded curated answer exists."""
+    cleaned = _normalize_text(answer).lower()
+    if re.search(
+        r"(?:informasi|konteks|dokumen).{0,55}(?:belum|tidak).{0,20}(?:tersedia|cukup|lengkap|mencukupi|memuat|mencantumkan)",
+        cleaned,
+    ):
+        return True
+    return _contains_any(
+        cleaned,
+        {
+            "informasi tidak tersedia",
+            "tidak tersedia dalam dokumen",
+            "tidak tercantum dalam dokumen",
+            "konteks dokumen tidak cukup",
+            "konteks dokumen yang tersedia belum cukup",
+            "konteks dokumen yang tersedia belum mencukupi",
+            "konteks dokumen belum menyediakan informasi lengkap",
+            "dokumen belum menyediakan informasi lengkap",
+            "dokumen rujukan yang tersedia tidak memberikan informasi",
+            "dokumen rujukan yang tersedia tidak memuat informasi",
+            "dokumen yang tersedia tidak mencantumkan",
+            "tidak tercantum dalam potongan dokumen",
+            "konteks dokumen tidak membahas",
+        },
+    )
 
 
 def _source_metadata(chunk_id: str | None) -> dict[str, str | None]:
@@ -2726,9 +2786,17 @@ class RagPipeline:
         self.vector_store = make_vector_store(self.settings)
 
     def status(self) -> dict[str, Any]:
-        llm_model = self.settings.gemini_model if self.settings.llm_provider == "gemini" else self.settings.ollama_model
+        model_by_provider = {
+            "groq": self.settings.groq_model,
+            "gemini": self.settings.gemini_model,
+            "ollama": self.settings.ollama_model,
+        }
+        llm_model = model_by_provider.get(self.settings.llm_provider, "tidak diketahui")
         if self.settings.llm_provider == "auto":
-            llm_model = f"auto: {self.settings.gemini_model} -> deterministic extractive fallback"
+            llm_model = (
+                f"auto: {self.settings.gemini_model} -> {self.settings.groq_model} "
+                "-> deterministic extractive fallback"
+            )
 
         return {
             "mode": "rag",
@@ -2951,39 +3019,48 @@ class RagPipeline:
                 escalation="low_retrieval_match",
             )
 
-        if curated:
-            answer = _sanitize_normal_answer(curated)
-            mode = "rag_guided"
-        else:
-            if not usable_relevant:
-                answer = _fallback_reply()
-                return ChatResponse(
-                    answer=answer,
-                    reply=answer,
-                    mode="fallback",
-                    next_actions=["Tanya pertanyaan lain"],
-                    retrieval_confidence=relevant[0].score if relevant else 0.0,
-                    model_status="no_clean_context",
-                    escalation="no_clean_context",
-                )
+        # Every ordinary, grounded RAG question must try the configured LLM
+        # first. Curated and extractive answers are reliability fallbacks, not
+        # a shortcut that silently bypasses generation during evaluation or
+        # production use.
+        if usable_relevant:
             generation_context = usable_relevant[: self.settings.top_k]
             generated = self._generate_answer(question, generation_context, history=history)
             if generated and _contains_arabic_script(generated):
                 logger.warning("Discarding generated answer containing unverified Arabic text.")
                 generated = None
-            answer = _sanitize_normal_answer(generated) if generated else _extractive_answer(question, generation_context)
-            mode = "rag" if generated else "rag_extractive"
-            if not answer:
-                answer = _fallback_reply()
-                return ChatResponse(
-                    answer=answer,
-                    reply=answer,
-                    mode="fallback",
-                    next_actions=["Tanya pertanyaan lain"],
-                    retrieval_confidence=usable_relevant[0].score,
-                    model_status="insufficient_clean_context",
-                    escalation="insufficient_clean_context",
+            if generated and curated and _claims_context_is_insufficient(generated):
+                logger.warning(
+                    "Discarding an over-conservative generated answer because a grounded curated answer is available."
                 )
+                generated = None
+
+            if generated:
+                answer = _sanitize_normal_answer(generated)
+                mode = "rag"
+            elif curated:
+                answer = _sanitize_normal_answer(curated)
+                mode = "rag_guided"
+            else:
+                answer = _extractive_answer(question, generation_context)
+                mode = "rag_extractive"
+        elif curated:
+            answer = _sanitize_normal_answer(curated)
+            mode = "rag_guided"
+        else:
+            answer = None
+
+        if not answer:
+            answer = _fallback_reply()
+            return ChatResponse(
+                answer=answer,
+                reply=answer,
+                mode="fallback",
+                next_actions=["Tanya pertanyaan lain"],
+                retrieval_confidence=(usable_relevant[0].score if usable_relevant else (relevant[0].score if relevant else 0.0)),
+                model_status="insufficient_clean_context",
+                escalation="insufficient_clean_context",
+            )
 
         answer = _normalize_sensitive_terms(answer)
 
@@ -3029,12 +3106,14 @@ class RagPipeline:
         )
 
     def _llm_ready(self) -> bool:
+        if self.settings.llm_provider == "groq":
+            return bool(self.settings.groq_api_key)
         if self.settings.llm_provider == "gemini":
             return bool(self.settings.gemini_api_key)
         if self.settings.llm_provider == "ollama":
             return bool(self.settings.ollama_base_url and self.settings.ollama_model)
         if self.settings.llm_provider == "auto":
-            return bool(self.settings.gemini_api_key)
+            return bool(self.settings.groq_api_key or self.settings.gemini_api_key)
         return False
 
     def _retrieve_results(self, query: str, top_k: int) -> list[RetrievalResult]:
@@ -3055,10 +3134,16 @@ class RagPipeline:
 
     def _generation_providers(self) -> list[str]:
         if self.settings.llm_provider == "auto":
-            # Never fail over from a reviewed cloud model to an unvalidated
-            # local model for religious guidance.  The caller already provides
-            # a deterministic extractive answer when generation is unavailable.
-            return ["gemini"] if self.settings.gemini_api_key else []
+            # Only reviewed cloud providers participate in production failover.
+            # The caller provides a deterministic extractive response if both
+            # providers are unavailable, so an unvalidated local model is never
+            # introduced silently for religious guidance.
+            providers = []
+            if self.settings.gemini_api_key:
+                providers.append("gemini")
+            if self.settings.groq_api_key:
+                providers.append("groq")
+            return providers
         return [self.settings.llm_provider]
 
     def _try_generate_with_provider(
@@ -3069,6 +3154,8 @@ class RagPipeline:
         history: list[ChatMessage] | None = None,
     ) -> str | None:
         try:
+            if provider == "groq":
+                return self._generate_with_groq(question, results, history=history)
             if provider == "gemini":
                 return self._generate_with_gemini(question, results, history=history)
             if provider == "ollama":
@@ -3078,6 +3165,40 @@ class RagPipeline:
         except Exception:
             logger.warning("%s generation failed; trying next fallback path if available.", provider, exc_info=True)
             return None
+
+    def _generate_with_groq(
+        self,
+        question: str,
+        results: list[RetrievalResult],
+        history: list[ChatMessage] | None = None,
+    ) -> str | None:
+        if not self.settings.groq_api_key:
+            return None
+        payload = json.dumps(
+            {
+                "model": self.settings.groq_model,
+                "messages": [
+                    {"role": "user", "content": _make_prompt(question, results, history=history)}
+                ],
+                "temperature": 0.2,
+                "max_completion_tokens": 700,
+                "reasoning_effort": "low",
+            }
+        ).encode("utf-8")
+        req = urllib_request.Request(
+            "https://api.groq.com/openai/v1/chat/completions",
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {self.settings.groq_api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib_request.urlopen(req, timeout=45) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        choices = data.get("choices") or []
+        text = str((choices[0].get("message") or {}).get("content") or "").strip() if choices else ""
+        return text or None
 
     def _generate_with_gemini(
         self,

@@ -23,6 +23,7 @@ frontend/.env
 
 # Logs and local outputs
 logs/
+local-evaluation/
 *.log
 *.out.log
 *.err.log

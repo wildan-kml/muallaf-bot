@@ -58,6 +58,8 @@ class Settings:
     embeddings_meta_path: Path
     embedding_model: str
     llm_provider: str
+    groq_api_key: str
+    groq_model: str
     gemini_api_key: str
     gemini_model: str
     ollama_base_url: str
@@ -130,6 +132,8 @@ def get_settings() -> Settings:
         embeddings_meta_path=vector_db_dir / "embeddings_meta.json",
         embedding_model=os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-small"),
         llm_provider=os.getenv("LLM_PROVIDER", "gemini").strip().lower(),
+        groq_api_key=os.getenv("GROQ_API_KEY", "").strip(),
+        groq_model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b").strip(),
         gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
         gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
         ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),

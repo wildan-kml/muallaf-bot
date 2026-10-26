@@ -205,7 +205,38 @@ git commit -m "security: lindungi API dari spam brute force dan akses langsung"
 git push origin master
 ```
 
-## 9. Verifikasi produksi
+## 9. Provider generatif dan failover
+
+Mode produksi `LLM_PROVIDER=auto` menggunakan urutan:
+
+1. Gemini `gemini-3.5-flash-lite` sebagai generator utama berlatensi rendah.
+2. Groq `openai/gpt-oss-120b` bila Gemini gagal, timeout, atau kuotanya habis.
+3. Jawaban ekstraktif deterministik bila kedua provider gagal.
+
+Simpan API key Groq di Modal sebagai secret terpisah. Jangan menaruh nilainya
+di Git, `.env.example`, atau perintah commit:
+
+```powershell
+modal secret create muallaf-bot-groq GROQ_API_KEY="PASTE_KEY_GROQ"
+```
+
+Untuk pengembangan lokal, tambahkan ke `backend/.env` yang sudah diabaikan Git:
+
+```dotenv
+LLM_PROVIDER=auto
+GROQ_API_KEY=PASTE_KEY_GROQ
+GROQ_MODEL=openai/gpt-oss-120b
+```
+
+Setelah secret tersedia, deploy ulang backend:
+
+```powershell
+modal deploy deploy/modal_app.py
+```
+
+Secret Gemini `muallaf-bot-gemini` tetap dipertahankan sebagai fallback.
+
+## 10. Verifikasi produksi
 
 1. Buka aplikasi di jendela Incognito.
 2. Pastikan pendaftaran dan akses tamu meminta Turnstile.
@@ -237,7 +268,7 @@ ke Git atau ke konfigurasi Cloudflare frontend.
 7. Pastikan response halaman memiliki CSP, HSTS, `X-Frame-Options: DENY`, dan
    `X-Content-Type-Options: nosniff`.
 
-## 10. Batas yang diterapkan
+## 11. Batas yang diterapkan
 
 - Cloudflare global: 120 request API/menit per lokasi Cloudflare.
 - Cloudflare chat: 10 request/menit per akun atau jaringan tamu.
@@ -251,7 +282,7 @@ ke Git atau ke konfigurasi Cloudflare frontend.
 - Riwayat yang dapat dikirim client: maksimal 6 pesan.
 - Modal: satu container, dua input bersamaan, timeout 120 detik.
 
-## 11. Pemeliharaan rutin gratis
+## 12. Pemeliharaan rutin gratis
 
 Setiap bulan:
 

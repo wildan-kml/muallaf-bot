@@ -395,6 +395,9 @@ def read_raw_samples(
                 sample["retrieved_context_labels"] = labels_from_sources(sources)
             else:
                 sample.setdefault("retrieved_context_labels", [])
+            sample.setdefault("user_input", sample.get("question", ""))
+            sample.setdefault("response", sample.get("answer", ""))
+            sample.setdefault("should_fallback", False)
             samples.append(sample)
     return samples
 
@@ -452,6 +455,28 @@ def build_ragas_llm() -> Any | None:
       set RAGAS_OLLAMA_MODEL=llama3.2:3b
     """
     provider = os.getenv("RAGAS_LLM_PROVIDER", os.getenv("LLM_PROVIDER", "")).lower()
+
+    if provider == "groq":
+        patch_ragas_vertexai_import()
+        try:
+            from langchain_groq import ChatGroq
+            from ragas.llms import LangchainLLMWrapper
+        except ImportError as exc:
+            raise RuntimeError("Evaluator Groq membutuhkan langchain-groq dan ragas.") from exc
+
+        api_key = os.getenv("GROQ_API_KEY", "")
+        if not api_key:
+            raise RuntimeError("GROQ_API_KEY belum tersedia untuk evaluator RAGAS.")
+        model_name = os.getenv("RAGAS_GROQ_MODEL", "openai/gpt-oss-120b")
+        return LangchainLLMWrapper(ChatGroq(
+            model=model_name,
+            api_key=api_key,
+            temperature=0,
+            max_tokens=1024,
+            reasoning_effort="low",
+            max_retries=1,
+            timeout=float(os.getenv("RAGAS_GROQ_TIMEOUT", "180")),
+        ))
 
     if provider == "ollama":
         patch_ragas_vertexai_import()

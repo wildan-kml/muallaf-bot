@@ -402,9 +402,17 @@ def debug_runtime(user: AuthenticatedUser = Depends(get_current_user)) -> dict[s
         raise HTTPException(status_code=404, detail="Endpoint debug dinonaktifkan")
     require_admin(user)
     pipeline = get_chatbot_pipeline()
-    llm_model = settings.gemini_model if settings.llm_provider == "gemini" else settings.ollama_model
+    model_by_provider = {
+        "groq": settings.groq_model,
+        "gemini": settings.gemini_model,
+        "ollama": settings.ollama_model,
+    }
+    llm_model = model_by_provider.get(settings.llm_provider, "tidak diketahui")
     if settings.llm_provider == "auto":
-        llm_model = f"auto: {settings.gemini_model} -> deterministic extractive fallback"
+        llm_model = (
+            f"auto: {settings.groq_model} -> {settings.gemini_model} "
+            "-> deterministic extractive fallback"
+        )
 
     return {
         "pid": os.getpid(),
@@ -416,6 +424,7 @@ def debug_runtime(user: AuthenticatedUser = Depends(get_current_user)) -> dict[s
             "embeddings_path": str(settings.embeddings_path),
             "llm_provider": settings.llm_provider,
             "llm_model": llm_model,
+            "groq_key_present": bool(settings.groq_api_key),
             "gemini_key_present": bool(settings.gemini_api_key),
         },
         "rag_status": pipeline.status(),

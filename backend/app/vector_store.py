@@ -190,6 +190,8 @@ def _expanded_question(question: str) -> str:
         or "thaharah" in cleaned
     ):
         additions.append("wudhu wudu berwudhu bersuci thaharah membasuh rukun wudhu syarat wudhu hadats kecil sebelum shalat")
+        if "urutan" in cleaned or "mengulang" in cleaned or "ulang dari awal" in cleaned:
+            additions.append("tertib urutan tata cara wudhu niat membasuh telapak tangan berkumur hidung muka tangan siku mengusap kepala telinga kaki")
 
     if (
         "tayamum" in cleaned
@@ -202,15 +204,51 @@ def _expanded_question(question: str) -> str:
 
     if "shalat" in cleaned or "sholat" in cleaned:
         additions.append("shalat sholat ayat al-qur'an tentang shalat artinya surat")
+        if any(term in cleaned for term in ("shalat wajib", "sholat wajib", "setiap hari", "lima waktu")):
+            additions.append("shalat wajib lima waktu subuh dua rakaat zuhur empat rakaat asar empat rakaat magrib tiga rakaat isya empat rakaat")
 
     if "tayamum" in cleaned or "mandi wajib" in cleaned or "mandi janabah" in cleaned:
         additions.append("tayamum mandi wajib mandi janabah hadats besar bersuci ibadah praktis")
 
     if "pembinaan" in cleaned or "materi" in cleaned or "setelah syahadat" in cleaned:
         additions.append("materi pembinaan mualaf studi islam dasar fiqih ibadah akhlaq karimah pengenalan al-quran")
+    if "setelah syahadat" in cleaned and any(term in cleaned for term in ("bimbingan", "pembinaan", "lanjutan")):
+        additions.append("mengikuti pembinaan minimal empat pertemuan sertifikat setelah pembinaan selesai jadwal kelas pembinaan imc-mask")
+
+    if (
+        any(term in cleaned for term in ("kelas khusus", "kelas shalat", "belajar shalat", "belajar sholat"))
+        and any(term in cleaned for term in ("mualaf", "muallaf", "imc", "pembinaan", "kelas"))
+    ):
+        additions.append("kelas pembinaan imc-mask materi fiqih ibadah praktik wudhu shalat mualaf baru rabu sabtu")
+
+    if any(term in cleaned for term in ("menikah sebelum masuk islam", "nikah sebelum masuk islam", "pernikahan sebelum masuk islam")):
+        additions.append("status pernikahan sebelum masuk islam pasangan suami istri muallaf hubungan mahram pernikahan tetap sah")
+    if (
+        "pasangan" in cleaned
+        and any(term in cleaned for term in ("masuk islam", "mualaf", "muallaf"))
+    ):
+        additions.append("salah satu pasangan masuk islam status pernikahan suami istri masa idah hak kewajiban anak konsultasi")
+    if (
+        "anak" in cleaned
+        and "orang tua" in cleaned
+        and any(term in cleaned for term in ("masuk islam", "agama", "muslim"))
+    ):
+        additions.append("agama anak kecil mengikuti orang tua muslim salah satu orang tua masuk islam pengasuhan anak perwalian")
+
+    if any(term in cleaned for term in ("hutang", "utang", "piutang")):
+        additions.append(
+            "hutang utang piutang amanah mengambil harta orang lain berniat mengembalikan "
+            "menunaikan janji kewajiban pembayaran mencatat"
+        )
 
     if "baru tertarik" in cleaned or "mengenal islam" in cleaned or "mulai dari mana" in cleaned:
         additions.append("dasar islam rukun iman rukun islam syahadat pembinaan mualaf akidah ibadah akhlak")
+
+    if "menjaga iman" in cleaned or "memperkuat iman" in cleaned or "menguatkan iman" in cleaned:
+        additions.append(
+            "menjaga memperkuat iman mualaf kokoh imannya ketaatan beribadah akhlak mulia "
+            "mempelajari Islam membaca memahami mengamalkan al-qur'an menjauhi larangan pembinaan"
+        )
 
     if (
         "belajar ibadah" in cleaned
@@ -226,6 +264,17 @@ def _expanded_question(question: str) -> str:
     if "pendampingan" in cleaned or "pembina" in cleaned or "layanan imc-mask" in cleaned:
         additions.append("bimbingan pembinaan mualaf ikrar syahadat konsultasi agama pendampingan imc-mask")
 
+    if any(term in cleaned for term in ("ragu", "ragu-ragu", "belum yakin", "konsultasi dulu")) and any(
+        term in cleaned for term in (*CONVERSION_TERMS, "islam", "mualaf", "muallaf")
+    ):
+        additions.append("batas informasi layanan konsultasi sebelum ikrar syahadat kanal resmi imc-mask")
+    if "pembina" in cleaned and any(term in cleaned for term in ("langsung", "bertanya", "konsultasi")):
+        additions.append("batas informasi sesi tanya jawab langsung pembina kanal resmi imc-mask")
+    if any(term in cleaned for term in ("tinggal jauh", "luar jakarta", "di luar jakarta", "jarak jauh", "daring", "online")):
+        additions.append("batas informasi pendampingan jarak jauh daring luar jakarta kanal resmi imc-mask")
+    if any(term in cleaned for term in ("membawa teman", "bawa teman", "ajak teman", "teman tertarik")):
+        additions.append("batas informasi kebijakan kunjungan bersama teman tertarik islam kanal resmi imc-mask")
+
     return " ".join([question, *additions]).strip()
 
 
@@ -233,6 +282,24 @@ def _priority_bonus(question: str, chunk: TextChunk) -> float:
     cleaned_question = str(question or "").lower()
     content = f"{chunk.document_title} {chunk.content}".lower()
     bonus = 0.0
+
+    asks_consult_before_conversion = any(
+        term in cleaned_question for term in ("ragu", "ragu-ragu", "belum yakin", "konsultasi dulu")
+    ) and any(term in cleaned_question for term in (*CONVERSION_TERMS, "islam", "mualaf", "muallaf"))
+    asks_direct_mentor = "pembina" in cleaned_question and any(
+        term in cleaned_question for term in ("langsung", "bertanya", "konsultasi")
+    )
+    asks_remote_service = any(
+        term in cleaned_question
+        for term in ("tinggal jauh", "luar jakarta", "di luar jakarta", "jarak jauh", "daring", "online")
+    )
+    asks_bring_friend = any(
+        term in cleaned_question for term in ("membawa teman", "bawa teman", "ajak teman", "teman tertarik")
+    )
+    if (asks_consult_before_conversion or asks_direct_mentor) and chunk.chunk_id == "imc_mask_website_service_scope_c4":
+        bonus += 0.45
+    if (asks_remote_service or asks_bring_friend) and chunk.chunk_id == "imc_mask_website_remote_visit_scope_c5":
+        bonus += 0.45
 
     asks_conversion = any(term in cleaned_question for term in CONVERSION_TERMS)
     asks_imc_conversion_flow = (
@@ -308,6 +375,12 @@ def _priority_bonus(question: str, chunk: TextChunk) -> float:
         bonus += 0.10
         if "tata cara ibadah praktis untuk mualaf baznas" in content:
             bonus += 0.08
+        if (
+            any(term in cleaned_question for term in ("urutan", "mengulang", "ulang dari awal"))
+            and "modul pembinaan mualaf" in content
+            and any(term in content for term in ("membasuh dua telapak tangan", "berkumur", "mengusap kepala", "membasuh kaki"))
+        ):
+            bonus += 0.24
 
     if (
         ("tayamum" in cleaned_question or "mandi wajib" in cleaned_question or "mandi janabah" in cleaned_question)
@@ -337,6 +410,12 @@ def _priority_bonus(question: str, chunk: TextChunk) -> float:
         and "tata cara ibadah praktis untuk mualaf baznas" in content
     ):
         bonus += 0.08
+    if (
+        any(term in cleaned_question for term in ("shalat wajib", "sholat wajib", "setiap hari", "lima waktu"))
+        and "tata cara ibadah praktis untuk mualaf" in content
+        and any(term in content for term in ("subuh", "zuhur", "ashar", "asar", "magrib", "isya"))
+    ):
+        bonus += 0.30
 
     if (
         ("ayat" in cleaned_question or "quran" in cleaned_question or "al quran" in cleaned_question or "alquran" in cleaned_question or "al-quran" in cleaned_question)
@@ -374,6 +453,55 @@ def _priority_bonus(question: str, chunk: TextChunk) -> float:
         bonus += 0.05
 
     if (
+        "setelah syahadat" in cleaned_question
+        and any(term in cleaned_question for term in ("bimbingan", "pembinaan", "lanjutan"))
+        and chunk.chunk_id in {"imc_mask_website_syahadat_flow_c1", "imc_mask_website_syahadat_schedule_c3"}
+    ):
+        bonus += 0.45
+
+    if (
+        any(term in cleaned_question for term in ("kelas khusus", "kelas shalat", "belajar shalat", "belajar sholat"))
+        and chunk.chunk_id == "imc_mask_website_syahadat_schedule_c3"
+    ):
+        bonus += 0.45
+
+    if (
+        any(term in cleaned_question for term in ("menikah sebelum masuk islam", "nikah sebelum masuk islam", "pernikahan sebelum masuk islam"))
+        and "fiqih mualaf" in content
+        and any(term in content for term in ("pernikahan", "perkawinan", "suami", "istri"))
+    ):
+        bonus += 0.30
+
+    if (
+        "pasangan" in cleaned_question
+        and any(term in cleaned_question for term in ("masuk islam", "mualaf", "muallaf"))
+        and "fiqih mualaf" in content
+        and any(term in content for term in ("pernikahan", "perkawinan", "suami", "istri", "iddah", "idah"))
+    ):
+        bonus += 0.30
+
+    if (
+        "anak" in cleaned_question
+        and "orang tua" in cleaned_question
+        and "fiqih mualaf" in content
+        and any(term in content for term in ("anak kecil", "pengasuhan", "orang tuanya", "mengikuti agama"))
+    ):
+        bonus += 0.30
+
+    if any(term in cleaned_question for term in ("hutang", "utang", "piutang")):
+        if chunk.chunk_id in {
+            "modul_pembinaan_mualaf_p131_c186",
+            "modul_pembinaan_mualaf_p132_c188",
+            "modul_pembinaan_mualaf_p132_c189",
+        }:
+            bonus += 0.40
+        elif "modul pembinaan mualaf" in content and any(
+            term in content
+            for term in ("mengambil harta orang lain", "mengembalikannya", "menunaikan janji", "amanah")
+        ):
+            bonus += 0.24
+
+    if (
         (
             "belajar ibadah" in cleaned_question
             or "mulai belajar ibadah" in cleaned_question
@@ -396,6 +524,24 @@ def _priority_bonus(question: str, chunk: TextChunk) -> float:
         and ("rukun islam" in content or "rukun iman" in content or "syahadat" in content)
     ):
         bonus += 0.08
+
+    if any(term in cleaned_question for term in ("menjaga iman", "memperkuat iman", "menguatkan iman")):
+        if chunk.chunk_id in {
+            "mengenal_islam_lebih_dekat_bersama_masjid_agung_sunda_kelapa_p24_c9",
+            "mengenal_islam_lebih_dekat_bersama_masjid_agung_sunda_kelapa_p60_c66",
+        }:
+            bonus += 0.36
+        elif any(
+            term in content
+            for term in (
+                "kokoh imannya",
+                "ketaatannya dalam beribadah",
+                "menerapkan akhlak mulia",
+                "bukti kita beriman",
+                "menjauhi segala larangan",
+            )
+        ):
+            bonus += 0.20
 
     if (
         ("keluarga" in cleaned_question or "orang tua" in cleaned_question)

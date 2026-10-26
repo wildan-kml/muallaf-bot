@@ -31,7 +31,13 @@ def main() -> None:
     chunks.extend(build_imc_mask_website_chunks())
     # Build into an isolated staging directory.  Nothing in the active
     # knowledge base is replaced until every PDF and embedding succeeds.
-    with tempfile.TemporaryDirectory(prefix="muallaf-kb-") as temporary_directory:
+    # Keep staging on the same volume as the active index. On Windows,
+    # os.replace cannot atomically move files from the default temp folder on
+    # C: into a repository stored on another drive (WinError 17).
+    with tempfile.TemporaryDirectory(
+        prefix="muallaf-kb-",
+        dir=settings.processed_dir.parent,
+    ) as temporary_directory:
         staging_root = Path(temporary_directory)
         staging_processed = staging_root / "processed"
         staging_vector = staging_root / "vector_db"
